@@ -70,6 +70,26 @@ export const SectorConfig: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 8;
+
+  useEffect(() => {
+    if (sectors.length > 0) {
+      const maxPage = Math.ceil(sectors.length / ITEMS_PER_PAGE);
+      if (currentPage > maxPage) {
+        setCurrentPage(maxPage);
+      }
+    } else {
+      setCurrentPage(1);
+    }
+  }, [sectors.length, currentPage]);
+
+  const totalPages = Math.max(1, Math.ceil(sectors.length / ITEMS_PER_PAGE));
+  const activePage = currentPage > totalPages ? totalPages : currentPage;
+  const pageStart = sectors.length === 0 ? 0 : (activePage - 1) * ITEMS_PER_PAGE + 1;
+  const pageEnd = Math.min(activePage * ITEMS_PER_PAGE, sectors.length);
+  const paginatedSectors = sectors.slice((activePage - 1) * ITEMS_PER_PAGE, activePage * ITEMS_PER_PAGE);
+
   // 1. Sector Modal Drawer States (Only asks for Sector Name)
   const [isOpenSectorModal, setIsOpenSectorModal] = useState(false);
   const [sectorNameInput, setSectorNameInput] = useState('');
@@ -217,6 +237,9 @@ export const SectorConfig: React.FC = () => {
         sector: cleanName,
         stocks: []
       });
+      // Redirect to the last page for new sector
+      const newTotalPages = Math.ceil(updatedSectors.length / ITEMS_PER_PAGE);
+      setCurrentPage(newTotalPages);
     }
 
     setSectors(updatedSectors);
@@ -417,169 +440,229 @@ export const SectorConfig: React.FC = () => {
             gap: '20px'
           }}>
           
-          {sectors.map((sectorObj, sectorIdx) => (
-            <div 
-              key={sectorIdx}
-              className="glass-panel"
-              style={{
-                padding: '16px 20px',
-                background: '#ffffff',
-                borderLeft: '4px solid #1e5eff',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
-              }}
-            >
-              {/* Sector Card Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '10px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>
-                    {sectorObj.sector}
-                  </span>
-                  <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f8fafc', padding: '2px 6px', borderRadius: '4px', border: '1px solid #edf2f7' }}>
-                    {sectorObj.stocks.length} 只股票
-                  </span>
+          {paginatedSectors.map((sectorObj, index) => {
+            const sectorIdx = (activePage - 1) * ITEMS_PER_PAGE + index;
+            return (
+              <div 
+                key={sectorIdx}
+                className="glass-panel"
+                style={{
+                  padding: '16px 20px',
+                  background: '#ffffff',
+                  borderLeft: '4px solid #1e5eff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                {/* Sector Card Header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #edf2f7', paddingBottom: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>
+                      {sectorObj.sector}
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#94a3b8', background: '#f8fafc', padding: '2px 6px', borderRadius: '4px', border: '1px solid #edf2f7' }}>
+                      {sectorObj.stocks.length} 只股票
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      onClick={() => handleOpenStockModal(sectorIdx, null)}
+                      style={{
+                        background: 'rgba(30, 94, 255, 0.06)',
+                        color: '#1e5eff',
+                        border: '1px solid rgba(30, 94, 255, 0.15)',
+                        padding: '4px 8px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(30, 94, 255, 0.12)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(30, 94, 255, 0.06)'}
+                    >
+                      <Plus size={12} />
+                      添加股票
+                    </button>
+
+                    <button
+                      onClick={() => handleOpenSectorModal(sectorIdx)}
+                      style={{
+                        background: '#f8fafc',
+                        color: '#475569',
+                        border: '1px solid #e2e8f0',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                      title="重命名板块"
+                    >
+                      <Edit2 size={12} />
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteSector(sectorIdx)}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.04)',
+                        color: '#ef4444',
+                        border: '1px solid rgba(239, 68, 68, 0.15)',
+                        padding: '4px 6px',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center'
+                      }}
+                      title="删除整个板块"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    onClick={() => handleOpenStockModal(sectorIdx, null)}
-                    style={{
-                      background: 'rgba(30, 94, 255, 0.06)',
-                      color: '#1e5eff',
-                      border: '1px solid rgba(30, 94, 255, 0.15)',
-                      padding: '4px 8px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(30, 94, 255, 0.12)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(30, 94, 255, 0.06)'}
-                  >
-                    <Plus size={12} />
-                    添加股票
-                  </button>
-
-                  <button
-                    onClick={() => handleOpenSectorModal(sectorIdx)}
-                    style={{
-                      background: '#f8fafc',
-                      color: '#475569',
-                      border: '1px solid #e2e8f0',
-                      padding: '4px 6px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center'
-                    }}
-                    title="重命名板块"
-                  >
-                    <Edit2 size={12} />
-                  </button>
-
-                  <button
-                    onClick={() => handleDeleteSector(sectorIdx)}
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.04)',
-                      color: '#ef4444',
-                      border: '1px solid rgba(239, 68, 68, 0.15)',
-                      padding: '4px 6px',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center'
-                    }}
-                    title="删除整个板块"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-
-              {/* Sector Stocks List */}
-              {sectorObj.stocks.length === 0 ? (
-                <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #edf2f7', textAlign: 'center' }}>
-                  <HelpCircle size={18} style={{ color: '#94a3b8', margin: '0 auto 6px auto' }} />
-                  <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>暂无个股，请点击「添加股票」配置龙头。</span>
-                </div>
-              ) : (
-                <div style={{ overflow: 'hidden', border: '1px solid #edf2f7', borderRadius: '6px' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                    <thead>
-                      <tr style={{ background: '#f8fafc', borderBottom: '1px solid #edf2f7' }}>
-                        <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '110px' }}>股票</th>
-                        <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '110px' }}>题材</th>
-                        <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b' }}>关注与风控</th>
-                        <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '60px', textAlign: 'right' }}>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sectorObj.stocks.map((stock, stockIdx) => (
-                        <tr key={stockIdx} style={{ borderBottom: stockIdx === sectorObj.stocks.length - 1 ? 'none' : '1px solid #edf2f7' }}>
-                          <td style={{ padding: '8px 12px', verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column' }}>
-                              <strong style={{ fontSize: '12px', color: '#1e293b' }}>{stock.name}</strong>
-                              <span style={{ fontSize: '10px', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace", marginTop: '1px' }}>{stock.symbol}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '8px 12px', fontSize: '11px', color: '#475569', verticalAlign: 'middle', fontWeight: '500' }}>
-                            {stock.theme}
-                          </td>
-                          <td style={{ padding: '8px 12px', fontSize: '10px', lineHeight: 1.4, verticalAlign: 'middle' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ color: '#1e5eff' }}>触发: {stock.signal}</span>
-                              <span style={{ color: '#f59e0b' }}>防守: {stock.risk}</span>
-                            </div>
-                          </td>
-                          <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: 'right' }}>
-                            <div style={{ display: 'inline-flex', gap: '4px' }}>
-                              <button
-                                onClick={() => handleOpenStockModal(sectorIdx, stockIdx)}
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: '#1e5eff',
-                                  padding: '4px',
-                                  borderRadius: '3px',
-                                  cursor: 'pointer'
-                                }}
-                                title="编辑股票"
-                              >
-                                <Edit2 size={12} />
-                              </button>
-                              
-                              <button
-                                onClick={() => handleDeleteStock(sectorIdx, stockIdx)}
-                                style={{
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: '#ef4444',
-                                  padding: '4px',
-                                  borderRadius: '3px',
-                                  cursor: 'pointer'
-                                }}
-                                title="移除股票"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          </td>
+                {/* Sector Stocks List */}
+                {sectorObj.stocks.length === 0 ? (
+                  <div style={{ padding: '16px', background: '#f8fafc', borderRadius: '8px', border: '1px dashed #edf2f7', textAlign: 'center' }}>
+                    <HelpCircle size={18} style={{ color: '#94a3b8', margin: '0 auto 6px auto' }} />
+                    <span style={{ fontSize: '11px', color: '#94a3b8', display: 'block' }}>暂无个股，请点击「添加股票」配置龙头。</span>
+                  </div>
+                ) : (
+                  <div style={{ overflow: 'hidden', border: '1px solid #edf2f7', borderRadius: '6px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', borderBottom: '1px solid #edf2f7' }}>
+                          <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '110px' }}>股票</th>
+                          <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '110px' }}>题材</th>
+                          <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b' }}>关注与风控</th>
+                          <th style={{ padding: '8px 12px', fontSize: '11px', fontWeight: '700', color: '#64748b', width: '60px', textAlign: 'right' }}>操作</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {sectorObj.stocks.map((stock, stockIdx) => (
+                          <tr key={stockIdx} style={{ borderBottom: stockIdx === sectorObj.stocks.length - 1 ? 'none' : '1px solid #edf2f7' }}>
+                            <td style={{ padding: '8px 12px', verticalAlign: 'middle' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                <strong style={{ fontSize: '12px', color: '#1e293b' }}>{stock.name}</strong>
+                                <span style={{ fontSize: '10px', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace", marginTop: '1px' }}>{stock.symbol}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '8px 12px', fontSize: '11px', color: '#475569', verticalAlign: 'middle', fontWeight: '500' }}>
+                              {stock.theme}
+                            </td>
+                            <td style={{ padding: '8px 12px', fontSize: '10px', lineHeight: 1.4, verticalAlign: 'middle' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ color: '#1e5eff' }}>触发: {stock.signal}</span>
+                                <span style={{ color: '#f59e0b' }}>防守: {stock.risk}</span>
+                              </div>
+                            </td>
+                            <td style={{ padding: '8px 12px', verticalAlign: 'middle', textAlign: 'right' }}>
+                              <div style={{ display: 'inline-flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenStockModal(sectorIdx, stockIdx)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#1e5eff',
+                                    padding: '4px',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="编辑股票"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                                
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteStock(sectorIdx, stockIdx)}
+                                  style={{
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#ef4444',
+                                    padding: '4px',
+                                    borderRadius: '3px',
+                                    cursor: 'pointer'
+                                  }}
+                                  title="移除股票"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '16px', borderTop: '1px solid rgba(226,232,240,0.8)', marginTop: '8px' }}>
+              <span style={{ fontSize: '11px', color: '#64748b', fontFamily: "'JetBrains Mono', monospace" }}>
+                展示 {pageStart}-{pageEnd} 个板块 / 共 {sectors.length} 个
+              </span>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={activePage <= 1}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    border: '1px solid rgba(203,213,225,0.9)',
+                    borderRadius: '8px',
+                    background: activePage <= 1 ? '#f8fafc' : '#ffffff',
+                    color: activePage <= 1 ? '#cbd5e1' : '#334155',
+                    cursor: activePage <= 1 ? 'not-allowed' : 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  上一页
+                </button>
+
+                <span style={{ minWidth: '64px', textAlign: 'center', fontSize: '12px', color: '#334155', fontFamily: "'JetBrains Mono', monospace", fontWeight: '600' }}>
+                  {activePage} / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={activePage >= totalPages}
+                  style={{
+                    height: '32px',
+                    padding: '0 12px',
+                    border: '1px solid rgba(203,213,225,0.9)',
+                    borderRadius: '8px',
+                    background: activePage >= totalPages ? '#f8fafc' : '#ffffff',
+                    color: activePage >= totalPages ? '#cbd5e1' : '#334155',
+                    cursor: activePage >= totalPages ? 'not-allowed' : 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '600',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  下一页
+                </button>
+              </div>
             </div>
-          ))}
-        </div>
+          )}
 
         {/* Bottom Save Persist Row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '10px' }}>

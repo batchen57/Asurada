@@ -23,7 +23,7 @@ export const StrategyCenter: React.FC = () => {
       <div className="glass-panel" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
         <Sliders size={22} style={{ color: '#1e5eff' }} />
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>策略中心 (Strategy Center)</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>策略参数配置 (Strategy Parameters)</h2>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
             在此调整策略核心计算因数：如趋势过滤的均线参数、突破所要求的成交量倍率以及止损的 ATR 倍数。
           </p>

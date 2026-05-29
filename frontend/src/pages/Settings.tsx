@@ -12,6 +12,7 @@ export const SettingsPage: React.FC<SettingsProps> = ({ configs, onUpdateConfig,
   const [tushareToken, setTushareToken] = useState('demo_token_xyz_123456');
   const [feishuWebhook, setFeishuWebhook] = useState('https://open.feishu.cn/open-apis/bot/v2/hook/demo-webhook-id');
   const [feishuEnabled, setFeishuEnabled] = useState(false);
+  const [isTradingSimulation, setIsTradingSimulation] = useState(true);
   const [observeMaxDailyAlerts, setObserveMaxDailyAlerts] = useState('5');
   const [observeMergeWindowMinutes, setObserveMergeWindowMinutes] = useState('15');
   const [observeEnableKline, setObserveEnableKline] = useState(false);
@@ -25,6 +26,7 @@ export const SettingsPage: React.FC<SettingsProps> = ({ configs, onUpdateConfig,
       const tsToken = configs.find(c => c.key === 'tushare_token')?.value;
       const fsWebhook = configs.find(c => c.key === 'feishu_webhook')?.value;
       const fsEnabled = configs.find(c => c.key === 'feishu_enabled')?.value === 'true';
+      const isSim = configs.find(c => c.key === 'is_trading_simulation')?.value === 'true';
       const obsMaxAlerts = configs.find(c => c.key === 'observe_max_daily_alerts')?.value;
       const obsMergeWin = configs.find(c => c.key === 'observe_merge_window_minutes')?.value;
       const obsEnableKline = configs.find(c => c.key === 'observe_enable_kline')?.value === 'true';
@@ -32,6 +34,7 @@ export const SettingsPage: React.FC<SettingsProps> = ({ configs, onUpdateConfig,
       if (tsToken) setTushareToken(tsToken);
       if (fsWebhook) setFeishuWebhook(fsWebhook);
       setFeishuEnabled(fsEnabled);
+      setIsTradingSimulation(isSim);
       if (obsMaxAlerts) setObserveMaxDailyAlerts(obsMaxAlerts);
       if (obsMergeWin) setObserveMergeWindowMinutes(obsMergeWin);
       setObserveEnableKline(obsEnableKline);
@@ -44,6 +47,7 @@ export const SettingsPage: React.FC<SettingsProps> = ({ configs, onUpdateConfig,
       await onUpdateConfig('tushare_token', tushareToken);
       await onUpdateConfig('feishu_webhook', feishuWebhook);
       await onUpdateConfig('feishu_enabled', feishuEnabled ? 'true' : 'false');
+      await onUpdateConfig('is_trading_simulation', isTradingSimulation ? 'true' : 'false');
       await onUpdateConfig('observe_max_daily_alerts', observeMaxDailyAlerts);
       await onUpdateConfig('observe_merge_window_minutes', observeMergeWindowMinutes);
       await onUpdateConfig('observe_enable_kline', observeEnableKline ? 'true' : 'false');
@@ -130,6 +134,25 @@ export const SettingsPage: React.FC<SettingsProps> = ({ configs, onUpdateConfig,
               }}
             />
             <span style={{ fontSize: '11px', color: '#94a3b8' }}>支持配置群助手 Webhook，将策略买卖点和盘后复盘推送至手机。</span>
+          </div>
+
+          {/* Simulation toggle */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: 'rgba(241, 245, 249, 0.4)', borderRadius: '8px' }}>
+            <div>
+              <span style={{ fontSize: '12px', fontWeight: '600', color: '#334155', display: 'block' }}>启用交易沙盘模拟模式 (Sandbox Simulator)</span>
+              <span style={{ fontSize: '11px', color: '#64748b', display: 'block', marginTop: '2px' }}>开启后，系统在行情与数据分析中采用本地高仿真模拟器（极速且免接口额度消耗）；关闭后，直接获取真实行情。</span>
+            </div>
+            
+            <input 
+              type="checkbox"
+              checked={isTradingSimulation}
+              onChange={(e) => setIsTradingSimulation(e.target.checked)}
+              style={{
+                width: '36px',
+                height: '18px',
+                cursor: 'pointer'
+              }}
+            />
           </div>
 
           {/* Webhook toggle */}

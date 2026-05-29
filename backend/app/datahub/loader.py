@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import engine, Base
-from ..models import Stock, DailyPrice, Position, Task, SystemStatus, Signal, Configuration
+from ..models import Stock, DailyPrice, Position, Task, SystemStatus, Signal, Configuration, User
 from .tushare_sim import get_tushare_daily, get_tushare_all_metadata
 
 def calculate_ma(prices, period):
@@ -21,6 +21,24 @@ def calculate_ma(prices, period):
     return ma_values
 
 async def seed_database(db: AsyncSession):
+    # 0. Check and seed default admin user
+    user_result = await db.execute(select(User))
+    if not user_result.scalars().first():
+        print("Seeding default admin user...")
+        from ..utils.auth import hash_password, generate_salt
+        salt = generate_salt()
+        hashed = hash_password("admin123", salt)
+        admin_user = User(
+            username="admin",
+            hashed_password=hashed,
+            salt=salt,
+            role="admin",
+            is_active=True,
+            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        db.add(admin_user)
+        await db.commit()
+
     # Check if we already have stocks seeded
     result = await db.execute(select(Stock))
     if result.scalars().first():
@@ -46,6 +64,33 @@ async def seed_database(db: AsyncSession):
         {"key": "discovery_trading_style", "value": "中长线(VCP)为主"},
         {"key": "discovery_history_window_days", "value": "250"}
     ]
+    
+    # Dynamically serialize and seed A-share sector leader definitions in a hierarchical format
+    from .market_today import MARKET_LEADER_DEFS
+    import json
+    hierarchical_defaults = []
+    sector_map = {}
+    for item in MARKET_LEADER_DEFS:
+        sec = item["sector"]
+        stock_info = {
+            "symbol": item["symbol"],
+            "name": item["name"],
+            "theme": item["theme"],
+            "role": item["role"],
+            "signal": item["signal"],
+            "risk": item["risk"]
+        }
+        if sec not in sector_map:
+            sec_obj = {"sector": sec, "stocks": []}
+            hierarchical_defaults.append(sec_obj)
+            sector_map[sec] = sec_obj
+        sector_map[sec]["stocks"].append(stock_info)
+
+    configs_to_seed.append({
+        "key": "today_market_sectors",
+        "value": json.dumps(hierarchical_defaults, ensure_ascii=False)
+    })
+
     for c in configs_to_seed:
         res = await db.execute(select(Configuration).where(Configuration.key == c["key"]))
         cfg = res.scalars().first()

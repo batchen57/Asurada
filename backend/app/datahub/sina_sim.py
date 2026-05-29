@@ -149,13 +149,14 @@ class SinaMCPSimulator:
         noise = random.uniform(-0.001, 0.001)
         
         duration_ms = random.randint(8, 22)
+        symbols = ["600519.SH", "300750.SZ", "300760.SZ", "000002.SZ", "688981.SH", "002230.SZ", "600030.SH", "002594.SZ"]
         record_audit_log_sync(
             service_name="新浪 MCP 行情服务 (Sina Finance)",
             interface_name="globalStockQuoteRealtime (个股实时行情)",
             request_url="https://finance.sina.com.cn/api/quotes",
-            request_params={"symbols": ["600519.SH", "300750.SZ", "300760.SZ", "000002.SZ"]},
+            request_params={"symbols": symbols},
             response_status="SUCCESS",
-            response_summary="成功拉取持仓及监控列表个股 (茅台、宁德、迈瑞、万科) 的最新买卖盘五档实时行情快照",
+            response_summary=f"成功拉取持仓及监控列表个股 ({len(symbols)}只) 的最新买卖盘五档实时行情快照",
             duration_ms=duration_ms
         )
         
@@ -202,6 +203,50 @@ class SinaMCPSimulator:
                 "open": 8.52,
                 "volume": 1450000,
                 "change_pct": -4.8,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            },
+            "688981.SH": {
+                "symbol": "688981.SH",
+                "name": "中芯国际",
+                "price": round(53.20 * (1 + noise * 1.5), 2),
+                "high": 54.50,
+                "low": 52.10,
+                "open": 52.80,
+                "volume": 420000,
+                "change_pct": 1.25,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            },
+            "002230.SZ": {
+                "symbol": "002230.SZ",
+                "name": "科大讯飞",
+                "price": round(46.50 * (1 + noise * 2.5), 2),
+                "high": 47.80,
+                "low": 45.90,
+                "open": 46.10,
+                "volume": 310000,
+                "change_pct": 0.86,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            },
+            "600030.SH": {
+                "symbol": "600030.SH",
+                "name": "中信证券",
+                "price": round(21.80 * (1 + noise * 0.8), 2),
+                "high": 22.10,
+                "low": 21.50,
+                "open": 21.60,
+                "volume": 550000,
+                "change_pct": -0.45,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            },
+            "002594.SZ": {
+                "symbol": "002594.SZ",
+                "name": "比亚迪",
+                "price": round(238.50 * (1 + noise * 1.2), 2),
+                "high": 242.00,
+                "low": 235.10,
+                "open": 236.00,
+                "volume": 88000,
+                "change_pct": 1.62,
                 "timestamp": datetime.now().strftime("%H:%M:%S")
             }
         }

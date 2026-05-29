@@ -109,6 +109,43 @@ class WorkbenchDataResponse(BaseModel):
     signals: List[SignalResponse]
     system_status: List[SystemStatusResponse]
 
+class DataHubSourceStatus(BaseModel):
+    name: str
+    status: str
+    detail: str
+    requests_made: Optional[int] = None
+    quota_limit: Optional[int] = None
+    quota_remaining: Optional[int] = None
+    rate_limit_per_min: Optional[int] = None
+    current_rate: Optional[int] = None
+
+class DataHubTableSummary(BaseModel):
+    name: str
+    label: str
+    count: int
+    cols: List[str]
+
+class DataHubTableResponse(BaseModel):
+    table: DataHubTableSummary
+    rows: List[Dict[str, Any]]
+    limit: int
+    offset: int
+    total: int
+
+class DataHubOverviewResponse(BaseModel):
+    generated_at: str
+    database_url: str
+    sources: List[DataHubSourceStatus]
+    tables: List[DataHubTableSummary]
+
+class DataHubSyncResponse(BaseModel):
+    success: bool
+    message: str
+    synced_at: str
+    updated_positions: int
+    quote_count: int
+    tables: List[DataHubTableSummary]
+
 # Discovery (选股与题材) Schemas
 class DiscoveryConfigResponse(BaseModel):
     sectors: str
@@ -165,6 +202,30 @@ class DeepResearchResponse(BaseModel):
     report_markdown: str
     generated_at: str
 
+class TodayMarketLeaderResponse(BaseModel):
+    sector: str
+    theme: str
+    symbol: str
+    name: str
+    price: float
+    change_pct: float
+    turnover_billion: float
+    market_cap_billion: Optional[float] = None
+    pe: Optional[float] = None
+    amplitude: float
+    role: str
+    signal: str
+    risk: str
+    quote_time: str
+
+class TodayMarketResponse(BaseModel):
+    success: bool
+    snapshot_time: str
+    quote_source: str
+    fundamentals_source: str
+    is_realtime: bool
+    leaders: List[TodayMarketLeaderResponse]
+
 class AuditLogResponse(BaseModel):
     id: int
     timestamp: str
@@ -175,6 +236,7 @@ class AuditLogResponse(BaseModel):
     response_status: str
     response_summary: Optional[str] = None
     duration_ms: int
+    operator: Optional[str] = "system"
     class Config:
         from_attributes = True
 
@@ -183,5 +245,48 @@ class AuditLogStatsResponse(BaseModel):
     success_rate: float
     today_calls: int
     avg_latency_ms: float
+
+class SectorStockConfig(BaseModel):
+    symbol: str
+    name: str
+    theme: str
+    role: str
+    signal: str
+    risk: str
+
+class HierarchicalSectorConfig(BaseModel):
+    sector: str
+    stocks: List[SectorStockConfig]
+
+
+class UserLoginRequest(BaseModel):
+    username: str
+    password: str
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    role: str
+    is_active: bool
+    created_at: str
+    class Config:
+        from_attributes = True
+
+class UserLoginResponse(BaseModel):
+    access_token: str
+    token_type: str
+    user: UserResponse
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: Optional[str] = "admin"
+    is_active: Optional[bool] = True
+
+class UserUpdate(BaseModel):
+    password: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
 
 

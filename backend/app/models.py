@@ -88,4 +88,18 @@ class AuditLog(Base):
     response_status = Column(String, index=True, nullable=False)
     response_summary = Column(String, nullable=True)
     duration_ms = Column(Integer, nullable=False)
+    operator = Column(String, nullable=True, default="system")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    salt = Column(String, nullable=False)
+    role = Column(String, default="admin", nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(String, nullable=False)
+
 

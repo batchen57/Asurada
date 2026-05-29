@@ -281,7 +281,7 @@ export const Observe: React.FC<ObserveProps> = ({ tasks, onTriggerOrchestrator, 
             </div>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: '800', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                盘中盯盘控制舱 <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '20px', background: '#e2e8f0', color: '#475569' }}>Observe 02</span>
+                盘中盯盘控制舱 <span style={{ fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '20px', background: '#e2e8f0', color: '#475569' }}>Observe 03</span>
               </h2>
               <p style={{ fontSize: '12px', color: '#64748b', marginTop: '3px' }}>
                 系统贯彻<strong>「默认静默，低频巡检」</strong>原则。只监控持仓股与观察池，防止因盘中无谓波动导致的过度决策。

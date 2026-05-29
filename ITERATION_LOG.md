@@ -7,7 +7,7 @@
 
 ## 🚀 核心技术迭代脉络
 
-Asurada 系统的开发历经四个核心阶段，旨在将量化趋势研判与极致的交易纪律、主动降噪机制相结合，打造一个适合个人投资者的高保真全功能量化决策工作台。
+Asurada 系统的开发历经六个核心阶段，旨在将量化趋势研判与极致的交易纪律、主动降噪机制相结合，打造一个适合个人投资者的高保真全功能量化决策工作台。
 
 ```
 [版本更新总览]
@@ -15,6 +15,8 @@ v1.0.0 (2026-05-22) - 系统多智能体调度与基础工作台上线 (Mileston
 v1.1.0 (2026-05-22) - 选股与题材挖掘引擎 (Scenario Flow 04) 全功能交付 (Milestone 2)
 v1.2.0 (2026-05-22) - 盘后复盘、数据质量门控与降噪审计系统 (Scenario Flow 03) 完美收官 (Milestone 3)
 v1.3.0 (2026-05-26) - 系统审计与接口调用留痕管理系统 (Milestone 4) 全功能上线
+v1.4.0 (2026-05-29) - 今日股市大盘与个股买方画像预测大盘 (Milestone 5) 全功能上线
+v1.5.0 (2026-05-29) - 多用户 JWT 身份鉴权与安全审计控制系统 (Milestone 6) 全功能交付
 ```
 
 ---
@@ -122,16 +124,68 @@ v1.3.0 (2026-05-26) - 系统审计与接口调用留痕管理系统 (Milestone 4
 
 ---
 
+## 🟤 v1.4.0 Milestone 5: 今日股市大盘与个股买方画像预测大盘 (2026-05-29)
+
+### 1. 核心任务目标
+- 实现**今日股市大盘与核心龙头个股基本面穿透画像 (Today's Market & Valuation Center)** 模块。
+- 深度整合实盘与高保真本地仿真数据源（Sina 实时大盘与个股报价，Tushare 专业财务基本面参数指标），保证在各种外部网络状况下皆能展现最佳数据状态。
+- 支持行业板块多级分类，提供个股的买方深度财务画像（ROE/PE/PE历史分位/现金流优势/商业护城河分析）以及未来 3 年的经营/净利润预测多维数据。
+- 构建行业板块及龙头个股分类的可视化层级配置中心，实现高灵活性 CRUD 编排并持久化同步 SQLite 库。
+
+### 2. 关键技术实现与交付文件
+- **行情与深度财务穿透链路**：
+  - [market_today.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/market_today.py)：主导日内大盘行情数据聚合。支持实盘 Sina 接口提取实时快照，并针对数据断连/未交易时段引入了 Sina 仿真器及 Tushare 历史数据降级提取的双向兜底策略，将调用完整切面录入审计日志。
+  - [market_details_data.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/market_details_data.py)：内置宁德时代 (300750.SZ)、贵州茅台 (600519.SH)、迈瑞医疗 (300760.SZ)、中芯国际 (688981.SH) 等核心权重的专业买方画像资产，涵盖详细经营优势、3年营业收入/净利润预测表、催化事件及风控红线。
+- **配置编排持久化中心**：
+  - [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py)：新增 `/api/discovery/today-market` 报价聚合终点、`/api/discovery/today-market/{symbol}/details` 基本面画像终点，以及个股板块层级配置的 GET/PUT 同步终点，完美读写 SQLite 库中的 `configuration` 表。
+- **高颜值看板与动态抽屉**：
+  - [TodayMarket.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/TodayMarket.tsx)：构建毛玻璃“今日股市”大盘。支持快速多维 HSL 板块分类快捷过滤与全文防抖检索，卡片动效悬停。
+  - **右侧极客悬浮详情抽屉**：点击个股卡片以高级 CSS 过渡动画在右侧滑出画像面板，清晰渲染护城河详情、3年预测折合市盈率表格、催化因子列表及风险警告警示框，提供顶尖的沉浸式操作体验。
+- **板块与个股层级配置编排**：
+  - [SectorConfig.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/SectorConfig.tsx)：打造行业板块树分类配置模块。在交互上采取“轻量化设计原则”：创建板块时仅需维护板块名；而在具体板块中挂载股票时，才需设定地位、题材及买入/防御性警报触发词。自带 Preset Demo 数据的一键自动补全机制（Autofill）与出厂数据一键重置（Reset to Defaults）持久化。
+
+---
+
+## 🟤 v1.5.0 Milestone 6: 多用户 JWT 身份鉴权与安全审计控制系统 (2026-05-29)
+
+### 1. 核心任务目标
+- 研发**多用户认证与基于角色的访问控制权限（JWT Authentication & RBAC System）**。
+- 引入符合高安全规范的 PBKDF2-SHA256 密码哈希存储机制，弃用一切不安全的明文比对。
+- 实现标准 JWT (Header.Payload.Signature) 签发与签名自校验服务，不依赖重型外部库，提供轻量且可控的底层鉴权。
+- 整合系统审计记录机制，升级 `AuditLog` 架构以实时审计追踪各用户（Operator）的物理接口操作，并在前端提供完备的管理员用户管理控制台。
+
+### 2. 关键技术实现与交付文件
+- **安全密码学与鉴权底座**：
+  - [auth.py](file:///d:/WorkSpace/Asurada/backend/app/utils/auth.py)：开发独立的鉴权底座。使用标准 `hashlib.pbkdf2_hmac` 配合 secure random salt 实施 10 万次迭代 PBKDF2 Hashing。通过 `hmac-sha256` 以及 URL-safe base64 编解码实现标准 JWT 令牌的生成 `create_access_token` 与解密验证 `verify_access_token`。
+- **数据表与接口认证层**：
+  - [models.py](file:///d:/WorkSpace/Asurada/backend/app/models.py)：新增 `User` 表（物理存贮 username, hashed_password, salt, role 级别及 active 状态），并为 `AuditLog` 新增 `operator` 审计人字段。
+  - [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py)：
+    - `/api/auth/login`：用户安全登录并派发 signed JWT。
+    - `/api/users` 族群 APIs：提供多用户管理全套 CRUD（支持重置密码、权限等级变更、用户激活锁定）。
+    - 针对数据清空等高敏物理 API 路由整合鉴权逻辑，实时从 JWT 中提取 Username 并物理沉淀至 `AuditLog.operator` 中。
+- **毛玻璃极客登入面板与用户大盘**：
+  - [App.tsx](file:///d:/WorkSpace/Asurada/frontend/src/App.tsx)：在顶层无缝嵌入玻璃微光拟物化登入面板（Login Card），支持 `admin / admin123` 预置离线自适应鉴权及错误强回馈，保障系统初次部署时的即用性与安全性。
+  - [AuditLogs.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/AuditLogs.tsx)（双 Tab 精致升级）：
+    - **审计管理 Tab**：在物理明细表中新增 `👤 操作人 (Operator)` 标签指示器，区分系统自主调度 (system)、管理员 (admin) 及操作员行为。
+    - **管理员管理 Tab**：新增完整的管理员人员管理大盘，支持添加管理员、一键重置密码弹框校验、角色角色锁（Admin/Operator）一键变更、锁定/激活用户等交互。基于 RBAC 规范限制不同角色之间的交互权限（普通管理员无权修改或重置超级管理员密码）。
+
+---
+
 ## 📈 核心交付文件清单
 
 | 组件 | 文件路径 | 作用与职责说明 |
 | :--- | :--- | :--- |
 | **主配置** | [GEMINI.md](file:///d:/WorkSpace/Asurada/GEMINI.md) | 全景系统架构说明、多智能体协同设计及本地部署指南（遵循规则模版） |
+| **后端** | [auth.py](file:///d:/WorkSpace/Asurada/backend/app/utils/auth.py) | 基于标准库及 PBKDF2-SHA256 / HMAC-SHA256 实现的标准 JWT 鉴权底层 |
 | **后端** | [audit.py](file:///d:/WorkSpace/Asurada/backend/app/utils/audit.py) | 异步/同步核心审计记录引擎，提供切面化接口数据拦截与物理留存机制 |
+| **后端** | [market_today.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/market_today.py) | 今日股市大盘与个股多数据源行情融合引擎，内置高时效审计日志调用拦截 |
+| **后端** | [market_details_data.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/market_details_data.py) | 内置核心权重的专业级买方画像财务亮点、3年业绩预测矩阵数据源 |
 | **后端** | [discovery_engine.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/discovery_engine.py) | 3层选股初筛与打分、买方深度 Markdown 研报生成器、飞书快照 Delta 滚动引擎 |
 | **后端** | [orchestrator.py](file:///d:/WorkSpace/Asurada/backend/app/agents/orchestrator.py) | 主交易生命周期调度中枢，实现盘后数据质量门控、假预警信号对账、降噪自优化逻辑 |
-| **后端** | [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py) | FastAPI 核心路由接口组，包含选股、审计日志分页查询及统计等全量 APIs |
-| **前端** | [AuditLogs.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/AuditLogs.tsx) | 审计与调用大盘，提供 4 大核心 KPI 指标、多维过滤器、行明细展开抽屉及日志清空机制 |
+| **后端** | [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py) | FastAPI 核心路由接口组，包含选股、审计统计、今日股市大盘、用户管理及 JWT 鉴权全套 APIs |
+| **前端** | [TodayMarket.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/TodayMarket.tsx) | 今日大盘数据看板，支持 HSL 主动上色，个股基本面穿透与 3 年预测详情抽屉渲染 |
+| **前端** | [AuditLogs.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/AuditLogs.tsx) | 审计与调用大盘，合并管理员用户管理 Tab，支持完整的管理员 CRUD 与密码重置编排 |
+| **前端** | [SectorConfig.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/SectorConfig.tsx) | 极简板块/个股映射树编排后台，全量 CRUD 动作同步，自带 Demo 级快捷自动填补 |
 | **前端** | [Discovery.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/Discovery.tsx) | 题材与选股面板，支持滑动条交互、Top-N 动画卡片、Checklist 盘口验证及研报阅读器 |
 | **前端** | [Review.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/Review.tsx) | 盘后复盘控制台，多色状态徽章、降级警告悬浮弹窗、历史复盘文件查看与一键应用优化参数按钮 |
 | **前端** | [index.css](file:///d:/WorkSpace/Asurada/frontend/src/index.css) | 毛玻璃微光（Glassmorphism）核心 CSS 变量系统与浮雕面板 Hover 等动效实现 |

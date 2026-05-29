@@ -31,7 +31,7 @@ export const AgentCenter: React.FC = () => {
       <div className="glass-panel" style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '14px' }}>
         <Bot size={22} style={{ color: '#1e5eff' }} />
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>智能体中心 (Agent Center)</h2>
+          <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>智能体配置 (Agent Configuration)</h2>
           <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
             管理 Asurada 分布式多智能体集群：包含统一调度引擎、策略分析智能体以及推送执行端。
           </p>

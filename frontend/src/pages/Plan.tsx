@@ -442,7 +442,7 @@ export const Plan: React.FC<PlanProps> = ({ tasks, onTriggerOrchestrator, onRefr
         <div>
           <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '10px', fontFamily: 'var(--font-title)' }}>
             <CalendarRange size={22} style={{ color: '#1e5eff' }} />
-            盘前计划 (Plan 01)
+            盘前计划 (Plan 02)
           </h2>
           <p style={{ fontSize: '11.5px', color: '#64748b', marginTop: '6px', lineHeight: '1.5' }}>
             提取昨日收盘后的稳定交易数据，串联多重智能体扫描候选股票池，配比风险上限，最终形成具备高盈亏比的「可执行一页纸」。

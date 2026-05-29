@@ -28,6 +28,7 @@ interface AuditLog {
   response_status: string;
   response_summary: string;
   duration_ms: number;
+  operator: string;
 }
 
 interface AuditStats {
@@ -37,7 +38,174 @@ interface AuditStats {
   avg_latency_ms: number;
 }
 
-export const AuditLogs: React.FC = () => {
+interface AuditLogsProps {
+  defaultTab?: 'logs' | 'users';
+}
+
+export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'logs' | 'users'>(defaultTab || 'logs');
+
+  // User Management State
+  const [users, setUsers] = useState<any[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState<boolean>(false);
+  const [showAddUserModal, setShowAddUserModal] = useState<boolean>(false);
+  const [newUsername, setNewUsername] = useState<string>('');
+  const [newPassword, setNewPassword] = useState<string>('');
+  const [newRole, setNewRole] = useState<string>('operator');
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState<any | null>(null);
+  const [resetPasswordVal, setResetPasswordVal] = useState<string>('');
+  const [userError, setUserError] = useState<string>('');
+
+  const getMockUsersFallback = () => [
+    { id: 1, username: 'admin', role: 'admin', is_active: true, created_at: '2026-05-28 12:00:00' },
+    { id: 2, username: 'operator_alpha', role: 'operator', is_active: true, created_at: '2026-05-28 14:32:00' },
+    { id: 3, username: 'visitor_view', role: 'visitor', is_active: false, created_at: '2026-05-28 15:10:00' }
+  ];
+
+  const fetchUsers = async () => {
+    setIsUsersLoading(true);
+    setUserError('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('asurada_token')}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setUsers(data);
+      } else {
+        setUsers(getMockUsersFallback());
+      }
+    } catch (e) {
+      console.warn('Backend disconnected, showing fallback mock users.', e);
+      setUsers(getMockUsersFallback());
+    } finally {
+      setIsUsersLoading(false);
+    }
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUserError('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('asurada_token')}`
+        },
+        body: JSON.stringify({ username: newUsername, password: newPassword, role: newRole, is_active: true })
+      });
+      if (response.ok) {
+        setNewUsername('');
+        setNewPassword('');
+        setNewRole('operator');
+        setShowAddUserModal(false);
+        fetchUsers();
+      } else {
+        const err = await response.json();
+        setUserError(err.detail || '创建管理员失败');
+      }
+    } catch (e) {
+      // Mock mode
+      const newUser = {
+        id: users.length + 1,
+        username: newUsername,
+        role: newRole,
+        is_active: true,
+        created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+      };
+      setUsers([...users, newUser]);
+      setNewUsername('');
+      setNewPassword('');
+      setNewRole('operator');
+      setShowAddUserModal(false);
+    }
+  };
+
+  const handleToggleStatus = async (user: any) => {
+    if (user.username === 'admin') {
+      alert('系统保留的默认管理员账号不可冻结。');
+      return;
+    }
+    const newStatus = !user.is_active;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('asurada_token')}`
+        },
+        body: JSON.stringify({ is_active: newStatus })
+      });
+      if (response.ok) {
+        fetchUsers();
+      }
+    } catch (e) {
+      // Mock mode
+      setUsers(users.map(u => u.id === user.id ? { ...u, is_active: newStatus } : u));
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showResetPasswordModal) return;
+    const currentLoggedUser = JSON.parse(localStorage.getItem('asurada_user') || '{}');
+    const isOperator = currentLoggedUser.role === 'operator';
+    const cannotReset = isOperator && (showResetPasswordModal.role === 'admin' || showResetPasswordModal.username === 'admin');
+    if (cannotReset) {
+      alert('普通管理员无法重置超级管理员密码。');
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/users/${showResetPasswordModal.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('asurada_token')}`
+        },
+        body: JSON.stringify({ password: resetPasswordVal })
+      });
+      if (response.ok) {
+        alert(`管理员 ${showResetPasswordModal.username} 密码已重置成功！`);
+        setShowResetPasswordModal(null);
+        setResetPasswordVal('');
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        alert(errData.detail || `重置密码失败: ${response.status}`);
+      }
+    } catch (e) {
+      alert(`[模拟] 管理员 ${showResetPasswordModal.username} 密码已重置为: ${resetPasswordVal}`);
+      setShowResetPasswordModal(null);
+      setResetPasswordVal('');
+    }
+  };
+
+  const handleDeleteUser = async (user: any) => {
+    if (user.username === 'admin') {
+      alert('系统保留的默认管理员账号不可注销。');
+      return;
+    }
+    const currentLoggedUser = JSON.parse(localStorage.getItem('asurada_user') || '{}');
+    if (user.username === currentLoggedUser.username) {
+      alert('无法注销当前登录账户本身。');
+      return;
+    }
+    if (window.confirm(`🚨 确认要注销管理员账户 "${user.username}" 吗？注销后该账号将无法继续登入。`)) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/users/${user.id}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('asurada_token')}` }
+        });
+        if (response.ok) {
+          fetchUsers();
+        }
+      } catch (e) {
+        // Mock mode
+        setUsers(users.filter(u => u.id !== user.id));
+      }
+    }
+  };
+
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [stats, setStats] = useState<AuditStats>({
@@ -145,6 +313,18 @@ export const AuditLogs: React.FC = () => {
     fetchLogs();
   }, [currentPage, pageSize, selectedService, selectedStatus]);
 
+  useEffect(() => {
+    if (activeSubTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeSubTab]);
+
+  useEffect(() => {
+    if (defaultTab) {
+      setActiveSubTab(defaultTab);
+    }
+  }, [defaultTab]);
+
   // Handle search with local debounce-like behavior
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,7 +370,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ symbols: ['600519.SH', '300750.SZ', '300760.SZ', '000002.SZ'] }),
         response_status: 'SUCCESS',
         response_summary: '成功拉取持仓及监控列表个股 (茅台、宁德、迈瑞、万科) 的最新买卖盘五档实时行情快照',
-        duration_ms: 12
+        duration_ms: 12,
+        operator: 'system'
       },
       {
         id: 9,
@@ -201,7 +382,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ codes: ['000001.SH', '399001.SZ', '399006.SZ'] }),
         response_status: 'SUCCESS',
         response_summary: '已拉取上证指数(3134.25)、深证成指(10194.36)、创业板指(2057.58)及两市成交额(8542.0亿)快照',
-        duration_ms: 18
+        duration_ms: 18,
+        operator: 'system'
       },
       {
         id: 8,
@@ -212,7 +394,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ title: '盘前可执行计划一页纸', payload: { msg_type: 'interactive', card: { header: { title: 'Asurada | 盘前计划' } } } }),
         response_status: 'SUCCESS',
         response_summary: '已成功模拟飞书消息发送（静默模式）',
-        duration_ms: 64
+        duration_ms: 64,
+        operator: 'admin'
       },
       {
         id: 7,
@@ -223,7 +406,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ api_name: 'daily', params: { ts_code: '300750.SZ', limit: 250 }, simulation_mode: true }),
         response_status: 'SUCCESS',
         response_summary: '[模拟] 加载高仿真模拟股票日K线历史，返回 250 条记录 (代码: 300750.SZ)',
-        duration_ms: 82
+        duration_ms: 82,
+        operator: 'system'
       },
       {
         id: 6,
@@ -234,7 +418,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ api_name: 'stock_basic', params: { list_status: 'L' }, simulation_mode: true }),
         response_status: 'SUCCESS',
         response_summary: '[模拟] 加载高仿真市场个股行业分类及元数据，返回 14 个标的',
-        duration_ms: 45
+        duration_ms: 45,
+        operator: 'system'
       },
       {
         id: 5,
@@ -245,7 +430,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ title: '买入告警', payload: { card: { header: { title: '买入警告' } } } }),
         response_status: 'FAILED',
         response_summary: '连接飞书 API 失败: 404 Not Found',
-        duration_ms: 124
+        duration_ms: 124,
+        operator: 'operator_alpha'
       },
       {
         id: 4,
@@ -256,7 +442,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ api_name: 'daily_basic', params: { ts_code: '600519.SH' } }),
         response_status: 'SUCCESS',
         response_summary: '[模拟] 加载高仿真估值财务指标，包含 14 只股票 (代码: 600519.SH, 300750.SZ...)',
-        duration_ms: 55
+        duration_ms: 55,
+        operator: 'system'
       },
       {
         id: 3,
@@ -267,7 +454,8 @@ export const AuditLogs: React.FC = () => {
         request_params: JSON.stringify({ symbol: '300750.SZ', scale: 1 }),
         response_status: 'SUCCESS',
         response_summary: '已成功获取股票 [300750.SZ] 的 30 条分钟级高精度分时K线数据',
-        duration_ms: 22
+        duration_ms: 22,
+        operator: 'system'
       }
     ];
 
@@ -309,55 +497,111 @@ export const AuditLogs: React.FC = () => {
 
         {/* Global actions */}
         <div style={{ display: 'flex', gap: '12px' }}>
-          <button
-            onClick={handleRefresh}
-            disabled={isRefreshing || isLoading}
-            style={{
-              background: 'rgba(255, 255, 255, 0.8)',
-              border: '1px solid rgba(226, 232, 240, 0.8)',
-              color: '#475569',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-            }}
-          >
-            <RefreshCw size={14} className={isRefreshing ? 'spin-active' : ''} />
-            刷新日志
-          </button>
-          
-          <button
-            onClick={handleClearLogs}
-            disabled={isClearing}
-            style={{
-              background: 'rgba(254, 242, 242, 0.8)',
-              border: '1px solid rgba(254, 202, 202, 0.8)',
-              color: '#ef4444',
-              padding: '8px 16px',
-              borderRadius: '8px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            <Trash2 size={14} />
-            清空所有日志
-          </button>
+          {activeSubTab === 'logs' ? (
+            <>
+              <button
+                onClick={handleRefresh}
+                disabled={isRefreshing || isLoading}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  border: '1px solid rgba(226, 232, 240, 0.8)',
+                  color: '#475569',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              >
+                <RefreshCw size={14} className={isRefreshing ? 'spin-active' : ''} />
+                刷新日志
+              </button>
+              
+              <button
+                onClick={handleClearLogs}
+                disabled={isClearing}
+                style={{
+                  background: 'rgba(254, 242, 242, 0.8)',
+                  border: '1px solid rgba(254, 202, 202, 0.8)',
+                  color: '#ef4444',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <Trash2 size={14} />
+                清空所有日志
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={fetchUsers}
+                disabled={isUsersLoading}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.8)',
+                  border: '1px solid rgba(226, 232, 240, 0.8)',
+                  color: '#475569',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                }}
+              >
+                <RefreshCw size={14} className={isUsersLoading ? 'spin-active' : ''} />
+                刷新管理员
+              </button>
+
+              <button
+                onClick={() => {
+                  setUserError('');
+                  setShowAddUserModal(true);
+                }}
+                style={{
+                  background: '#1e5eff',
+                  border: 'none',
+                  color: 'white',
+                  padding: '8px 16px',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 12px rgba(30, 94, 255, 0.2)'
+                }}
+              >
+                新增管理员
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Metrics Summary Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+
+      {activeSubTab === 'logs' ? (
+        <>
+          {/* Metrics Summary Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
         
         {/* Total Calls */}
         <div className="glass-panel" style={{ padding: '20px', display: 'flex', alignItems: 'center', gap: '16px', minHeight: '90px' }}>
@@ -561,6 +805,7 @@ export const AuditLogs: React.FC = () => {
                 <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600' }}>接口名</th>
                 <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600' }}>端点 URL</th>
                 <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600', textAlign: 'center' }}>响应延时</th>
+                <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600', textAlign: 'center' }}>操作人员</th>
                 <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600', textAlign: 'center' }}>状态</th>
                 <th style={{ padding: '14px 16px', color: '#475569', fontWeight: '600', textAlign: 'center' }}>操作</th>
               </tr>
@@ -568,7 +813,7 @@ export const AuditLogs: React.FC = () => {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                       <RefreshCw size={16} className="spin-active" />
                       <span>正在检索系统审计留痕日志...</span>
@@ -577,7 +822,7 @@ export const AuditLogs: React.FC = () => {
                 </tr>
               ) : logs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
+                  <td colSpan={8} style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>
                     <HelpCircle size={28} style={{ color: '#cbd5e1', marginBottom: '8px' }} />
                     <p style={{ fontSize: '13px', fontWeight: '500' }}>未找到任何审计留痕记录</p>
                     <p style={{ fontSize: '11px', color: '#94a3b8', marginTop: '4px' }}>建议更换检索条件或稍后再试。</p>
@@ -648,6 +893,21 @@ export const AuditLogs: React.FC = () => {
                           {log.duration_ms}
                         </span>
                         <span style={{ fontSize: '9px', color: '#94a3b8', marginLeft: '2px' }}>ms</span>
+                      </td>
+
+                      {/* Operator */}
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          background: log.operator === 'system' ? 'rgba(100, 116, 139, 0.08)' : log.operator === 'admin' ? 'rgba(30, 94, 255, 0.08)' : 'rgba(139, 92, 246, 0.08)',
+                          color: log.operator === 'system' ? '#64748b' : log.operator === 'admin' ? '#1e5eff' : '#8b5cf6',
+                          border: log.operator === 'system' ? '1px solid rgba(100, 116, 139, 0.15)' : log.operator === 'admin' ? '1px solid rgba(30, 94, 255, 0.15)' : '1px solid rgba(139, 92, 246, 0.15)',
+                        }}>
+                          👤 {log.operator || 'system'}
+                        </span>
                       </td>
 
                       {/* Status badge */}
@@ -776,6 +1036,402 @@ export const AuditLogs: React.FC = () => {
         </div>
 
       </div>
+    </>
+  ) : (
+        <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Users Table or Grid */}
+          <div className="glass-panel" style={{ padding: '24px', background: '#ffffff', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>管理员用户列表</h3>
+                <p style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>管理系统后台登录凭证、角色和账号状态。</p>
+              </div>
+            </div>
+
+            {isUsersLoading ? (
+              <div style={{ padding: '60px 0', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', color: '#64748b' }}>
+                <RefreshCw size={24} className="spin-active" />
+                <span style={{ fontSize: '13px' }}>正在加载系统管理员列表...</span>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '16px' }}>
+                {users.map((user) => {
+                  const isPrimaryAdmin = user.username === 'admin';
+                  const currentLoggedUser = JSON.parse(localStorage.getItem('asurada_user') || '{}');
+                  const isSelf = user.username === currentLoggedUser.username;
+                  const isOperator = currentLoggedUser.role === 'operator';
+                  const cannotReset = isOperator && (user.role === 'admin' || user.username === 'admin');
+
+                  return (
+                    <div 
+                      key={user.id} 
+                      className="glass-panel" 
+                      style={{ 
+                        padding: '20px', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'space-between',
+                        border: '1px solid rgba(226, 232, 240, 0.8)',
+                        background: '#ffffff',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                        transition: 'all 0.2s',
+                        borderRadius: '12px',
+                        minHeight: '180px'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.08)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'none';
+                        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.05)';
+                      }}
+                    >
+                      {/* Top Row: User Avatar & Username */}
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{
+                            width: '42px',
+                            height: '42px',
+                            borderRadius: '50%',
+                            background: 'linear-gradient(135deg, rgba(30, 94, 255, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: '#1e5eff',
+                            fontWeight: 'bold',
+                            border: '1px solid rgba(30, 94, 255, 0.15)'
+                          }}>
+                            {user.username.substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '14px', fontWeight: '700', color: '#1e293b' }}>{user.username}</span>
+                              {isSelf && (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: 'rgba(16, 185, 129, 0.1)',
+                                  color: '#10b981',
+                                  fontSize: '9px',
+                                  fontWeight: '700',
+                                  borderRadius: '4px'
+                                }}>
+                                  当前登录
+                                </span>
+                              )}
+                            </div>
+                            <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', display: 'block' }}>
+                              创建于: {user.created_at || '系统内置'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Status Badge */}
+                        <span style={{
+                          padding: '3px 8px',
+                          borderRadius: '6px',
+                          fontSize: '10px',
+                          fontWeight: '700',
+                          background: user.is_active ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                          color: user.is_active ? '#10b981' : '#ef4444',
+                          border: user.is_active ? '1px solid rgba(16, 185, 129, 0.15)' : '1px solid rgba(239, 68, 68, 0.15)',
+                        }}>
+                          {user.is_active ? '正常' : '已冻结'}
+                        </span>
+                      </div>
+
+                      {/* Middle Details: Role */}
+                      <div style={{ marginTop: '16px', display: 'flex', gap: '20px', fontSize: '12px' }}>
+                        <div>
+                          <span style={{ color: '#64748b', display: 'block', fontSize: '10px' }}>角色定位</span>
+                          <span style={{ color: '#334155', fontWeight: '600', marginTop: '2px', display: 'block' }}>
+                            {user.role === 'admin' ? '🏷️ 系统超级管理员' : user.role === 'operator' ? '⚙️ 普通管理员' : '👁️ 只读访客'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action buttons footer */}
+                      <div style={{
+                        marginTop: '20px',
+                        paddingTop: '12px',
+                        borderTop: '1px solid rgba(226, 232, 240, 0.6)',
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                        gap: '8px'
+                      }}>
+                        <button
+                          disabled={cannotReset}
+                          title={cannotReset ? "普通管理员无法重置超级管理员密码" : undefined}
+                          onClick={() => {
+                            if (cannotReset) return;
+                            setResetPasswordVal('');
+                            setShowResetPasswordModal(user);
+                          }}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(226, 232, 240, 0.8)',
+                            color: cannotReset ? '#cbd5e1' : '#475569',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: cannotReset ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s',
+                            opacity: cannotReset ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (cannotReset) return;
+                            e.currentTarget.style.background = '#f8fafc';
+                            e.currentTarget.style.borderColor = 'rgba(30, 94, 255, 0.3)';
+                            e.currentTarget.style.color = '#1e5eff';
+                          }}
+                          onMouseLeave={(e) => {
+                            if (cannotReset) return;
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                            e.currentTarget.style.color = '#475569';
+                          }}
+                        >
+                          重置密码
+                        </button>
+
+                        <button
+                          disabled={isPrimaryAdmin}
+                          onClick={() => handleToggleStatus(user)}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(226, 232, 240, 0.8)',
+                            color: isPrimaryAdmin ? '#cbd5e1' : user.is_active ? '#f59e0b' : '#10b981',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: isPrimaryAdmin ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s',
+                            opacity: isPrimaryAdmin ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isPrimaryAdmin) {
+                              e.currentTarget.style.background = user.is_active ? 'rgba(245, 158, 11, 0.08)' : 'rgba(16, 185, 129, 0.08)';
+                              e.currentTarget.style.borderColor = user.is_active ? 'rgba(245, 158, 11, 0.3)' : 'rgba(16, 185, 129, 0.3)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isPrimaryAdmin) {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                            }
+                          }}
+                        >
+                          {user.is_active ? '冻结账户' : '解冻激活'}
+                        </button>
+
+                        <button
+                          disabled={isPrimaryAdmin || isSelf}
+                          onClick={() => handleDeleteUser(user)}
+                          style={{
+                            background: 'transparent',
+                            border: '1px solid rgba(226, 232, 240, 0.8)',
+                            color: isPrimaryAdmin || isSelf ? '#cbd5e1' : '#ef4444',
+                            padding: '5px 10px',
+                            borderRadius: '6px',
+                            fontSize: '11px',
+                            fontWeight: '600',
+                            cursor: isPrimaryAdmin || isSelf ? 'not-allowed' : 'pointer',
+                            transition: 'all 0.15s',
+                            opacity: isPrimaryAdmin || isSelf ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isPrimaryAdmin && !isSelf) {
+                              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                              e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isPrimaryAdmin && !isSelf) {
+                              e.currentTarget.style.background = 'transparent';
+                              e.currentTarget.style.borderColor = 'rgba(226, 232, 240, 0.8)';
+                            }
+                          }}
+                        >
+                          注销
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add Administrator Modal */}
+      {showAddUserModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <form onSubmit={handleCreateUser} className="glass-panel animate-scale-up" style={{ 
+            width: '450px', 
+            background: 'white', 
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)'
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(226, 232, 240, 0.8)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px' }}>👤</span>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>新增系统管理员</h3>
+              </div>
+              <button type="button" onClick={() => setShowAddUserModal(false)} style={{ background: 'transparent', border: 'none', fontSize: '20px', color: '#94a3b8', cursor: 'pointer' }}>
+                &times;
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {userError && (
+                <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.15)', color: '#ef4444', borderRadius: '8px', fontSize: '11px' }}>
+                  {userError}
+                </div>
+              )}
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>管理员用户名 (Username)</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="请输入用户名"
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid rgba(226, 232, 240, 0.8)', outline: 'none', fontSize: '12px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>访问凭证密码 (Password)</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="请输入登录密码"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid rgba(226, 232, 240, 0.8)', outline: 'none', fontSize: '12px' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>权限角色 (Role)</label>
+                <input
+                  type="text"
+                  readOnly
+                  value="普通管理员 (operator)"
+                  style={{ 
+                    padding: '9px 12px', 
+                    borderRadius: '8px', 
+                    border: '1px solid rgba(226, 232, 240, 0.8)', 
+                    background: '#f1f5f9', 
+                    color: '#64748b', 
+                    fontSize: '12px',
+                    cursor: 'not-allowed'
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(226, 232, 240, 0.8)', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc' }}>
+              <button type="button" onClick={() => setShowAddUserModal(false)} style={{ background: 'white', border: '1px solid rgba(226, 232, 240, 0.8)', color: '#475569', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                取消
+              </button>
+              <button type="submit" style={{ background: '#1e5eff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                保存创建
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Reset Password Modal */}
+      {showResetPasswordModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(15, 23, 42, 0.6)',
+          backdropFilter: 'blur(4px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 2000,
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <form onSubmit={handleResetPassword} className="glass-panel animate-scale-up" style={{ 
+            width: '400px', 
+            background: 'white', 
+            borderRadius: '16px',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
+            boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+            border: '1px solid rgba(255,255,255,0.2)'
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid rgba(226, 232, 240, 0.8)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '18px' }}>🔑</span>
+                <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>重置管理员密码</h3>
+              </div>
+              <button type="button" onClick={() => setShowResetPasswordModal(null)} style={{ background: 'transparent', border: 'none', fontSize: '20px', color: '#94a3b8', cursor: 'pointer' }}>
+                &times;
+              </button>
+            </div>
+
+            <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <span style={{ fontSize: '11px', color: '#64748b' }}>正在为管理员账户重置密码：</span>
+                <span style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', display: 'block', marginTop: '4px' }}>
+                  {showResetPasswordModal.username}
+                </span>
+              </div>
+              
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b', fontWeight: '600' }}>新密码 (New Password)</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="请输入该账户的新密码"
+                  value={resetPasswordVal}
+                  onChange={(e) => setResetPasswordVal(e.target.value)}
+                  style={{ padding: '9px 12px', borderRadius: '8px', border: '1px solid rgba(226, 232, 240, 0.8)', outline: 'none', fontSize: '12px' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '16px 24px', borderTop: '1px solid rgba(226, 232, 240, 0.8)', display: 'flex', justifyContent: 'flex-end', gap: '10px', background: '#f8fafc' }}>
+              <button type="button" onClick={() => setShowResetPasswordModal(null)} style={{ background: 'white', border: '1px solid rgba(226, 232, 240, 0.8)', color: '#475569', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', cursor: 'pointer' }}>
+                取消
+              </button>
+              <button type="submit" style={{ background: '#1e5eff', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                确认重置
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Log Detail Modal */}
       {activeLog && (
@@ -882,6 +1538,24 @@ export const AuditLogs: React.FC = () => {
                     display: 'inline-block' 
                   }}>
                     {activeLog.response_status}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>请求时间</span>
+                  <span style={{ fontSize: '12px', color: '#1e293b', fontWeight: '600', marginTop: '2px', display: 'block', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {activeLog.timestamp}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>操作人员</span>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    fontWeight: '700', 
+                    color: activeLog.operator === 'system' ? '#64748b' : activeLog.operator === 'admin' ? '#1e5eff' : '#8b5cf6', 
+                    marginTop: '4px', 
+                    display: 'inline-block' 
+                  }}>
+                    👤 {activeLog.operator || 'system'}
                   </span>
                 </div>
               </div>

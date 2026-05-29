@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## 项目概述
 
@@ -31,19 +31,18 @@ npm run lint      # ESLint
 
 ```
 frontend/src/
-  App.tsx          — 路由/布局/状态管理/安全登录遮罩/AI 助手抽屉
+  App.tsx          — 路由/布局/状态管理/AI 助手抽屉（整合审计页面路由）
   types.ts         — 所有前端类型定义（与 Pydantic schema 对应）
-  pages/           — Workbench, TodayMarket, Discovery, Plan, Observe, Review, DataHubCenter, StrategyCenter, AgentCenter, Signals, AuditLogs (含用户管理Tab), SectorConfig, Settings
-  components/      — Sidebar, Topbar, CardWorkflow, TodoList, RecentSignals, SystemStatus, TodayOverview, PlanStockCard
+  pages/           — Workbench, Plan, Observe, Review, Discovery, AuditLogs, DataHubCenter, StrategyCenter, AgentCenter, Signals, Settings
+  components/      — Sidebar, Topbar, CardWorkflow, TodoList, Positions, RecentSignals, SystemStatus, TodayOverview, PlanStockCard
 
 backend/app/
-  main.py          — FastAPI 应用入口 + 所有 API 路由（大盘实时报价、个股财务详情、鉴权及多用户CRUD、安全审计过滤）
+  main.py          — FastAPI 应用入口 + 所有 API 路由（含审计日志检索、统计、清空）
   database.py      — 异步 SQLite 引擎 + get_db 依赖注入
-  models.py        — SQLAlchemy ORM: Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog, User
-  schemas.py       — Pydantic 请求/响应模型（新增 UserResponse, UserLoginResponse, TodayMarketResponse 等）
+  models.py        — SQLAlchemy ORM: Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog
+  schemas.py       — Pydantic 请求/响应模型（新增 AuditLogResponse, AuditLogStatsResponse）
   utils/
-    audit.py       — 异步/同步底层审计组件（提供切面化接口数据拦截，含 Operator 追踪）
-    auth.py        — 独立安全鉴权底座（PBKDF2-SHA256 密码哈希、HMAC-SHA256 JWT 自验证签发）
+    audit.py       — 异步/同步底层审计组件（提供切面化接口数据拦截）
   agents/
     orchestrator.py — 主调度 Agent，统筹 Plan → Observe → Review → Iterate 四阶段交易流程
     feishu.py       — 飞书群机器人推送（集成审计日志捕获）
@@ -54,8 +53,6 @@ backend/app/
     loader.py       — 数据库建表 + 种子数据填充
     tushare_sim.py  — Tushare 日线历史数据仿真生成器（集成审计日志捕获）
     sina_sim.py     — 新浪财经实时行情仿真（集成审计日志捕获）
-    market_today.py — 今日大盘与个股行情融合聚合器（整合实盘Sina API与本地仿真）
-    market_details_data.py — 板块龙头个股财务亮点、ROE、3年预测折合市盈率矩阵静态库
     discovery_engine.py — 选股题材引擎（三层过滤管道+深度研报生成）
 ```
 
@@ -66,18 +63,14 @@ backend/app/
 3. **四阶段工作流** → 前端触发 `POST /api/orchestrator/run {phase}` → OrchestratorAgent 调度 VCPAgent/BrooksAgent → 更新 Task 状态 + 飞书推送
 4. **选股扫描** → `POST /api/discovery/scan` → DiscoveryEngine 三层过滤 → 评分排序 → Top-N 快照落盘
 5. **接口调用审计** → 行情仿真（Sina / Tushare）或消息推送（Feishu）触发 → 通过 `audit.py` 写入 `AuditLog` 并入库 → 前端 `AuditLogs.tsx` 查询与展示。
-6. **今日股市与个股穿透** → 前端加载 `/api/discovery/today-market` -> 调用 `market_today.py` 与 `market_details_data.py` -> 实盘与高保真本地仿真秒级拼装 -> 渲染个股基本面与 3 年预测详情抽屉。
-7. **身份验证与安全审计** → 登录 `/api/auth/login` -> 签发 JWT 令牌 -> 携带于后续 HTTP 请求头中 -> 后端自校验权限并审计 Operator 操作人属性。
 
 ### 关键设计点
 
 - **数据库是模拟的**：所有数据由 `tushare_sim.py` 和 `sina_sim.py` 程序生成，不存在真实的外部 API 依赖。`feishu_enabled` 默认 false，飞书推送也不会真实发出。
-- **前端自带 mock fallback**：`App.tsx` 的 catch 块中有 `getMockDataFallback()`，且 `AuditLogs.tsx`、`TodayMarket.tsx` 等页面在后端离线时依然提供高保真 mock fallback 数据支持，保障纯前端演示效果。
+- **前端自带 mock fallback**：`App.tsx` 的 catch 块中有 `getMockDataFallback()`，且 `AuditLogs.tsx` 等页面在后端离线时依然提供高保真 mock fallback 数据支持，保障纯前端演示效果。
 - **发现引擎有增量对比**：扫描结果与 `latest_discovery_snapshot.json` 比对，输出 additions/removals 供飞书卡片展示。
 - **配置持久化**：所有系统参数通过 `Configuration` 表读写，前端 Settings 页可编辑，Orchestrator 复盘时可一键应用优化参数。
 - **非阻塞切面审计机制**：审计功能基于异步/同步双通道实现。高频仿真环境下的调用记录通过事件循环的 `create_task` 派发或新开事件循环，实现物理数据库秒级落盘而不阻塞日内 Tick 报价产生。
-- **JWT与PBKDF2-SHA256密码安全**：弃用第三方复杂鉴权库，使用标准库自研 JWT 签名算法；密码存储使用标准 `hashlib` 的 10 万次迭代哈希防爆。
-- **板块与个股树轻量化 CRUD**：在 SectorConfig 模块上以“板块”为唯一聚合容器，股票配置参数高内聚，支持一键填充 Preset 演示数据及 SQLite 持久化。
 
 ---
 ## 编码行为准则

@@ -12,10 +12,11 @@ async def record_audit_log(
     request_params: Any,
     response_status: str,
     response_summary: str,
-    duration_ms: int
+    duration_ms: int,
+    operator: str = "system"
 ):
     """
-    Asynchronously records an audit log to the database.
+    Asynchronously records an audit log to the database, including the operator username.
     Can be awaited, or scheduled inside an event loop.
     """
     try:
@@ -40,7 +41,8 @@ async def record_audit_log(
                 request_params=request_params_str,
                 response_status=response_status,
                 response_summary=response_summary,
-                duration_ms=duration_ms
+                duration_ms=duration_ms,
+                operator=operator
             )
             session.add(log_entry)
             await session.commit()
@@ -54,7 +56,8 @@ def record_audit_log_sync(
     request_params: Any,
     response_status: str,
     response_summary: str,
-    duration_ms: int
+    duration_ms: int,
+    operator: str = "system"
 ):
     """
     Synchronous wrapper to record audit logs. Schedules the task in the running loop
@@ -71,7 +74,8 @@ def record_audit_log_sync(
                     request_params=request_params,
                     response_status=response_status,
                     response_summary=response_summary,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    operator=operator
                 )
             )
     except RuntimeError:
@@ -86,7 +90,8 @@ def record_audit_log_sync(
                     request_params=request_params,
                     response_status=response_status,
                     response_summary=response_summary,
-                    duration_ms=duration_ms
+                    duration_ms=duration_ms,
+                    operator=operator
                 )
             )
         except Exception as e:

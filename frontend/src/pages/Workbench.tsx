@@ -1,7 +1,6 @@
 import React from 'react';
 import { CardWorkflow } from '../components/CardWorkflow';
 import { TodayOverview } from '../components/TodayOverview';
-import { Positions } from '../components/Positions';
 import { TodoList } from '../components/TodoList';
 import { SystemStatusPanel } from '../components/SystemStatus';
 import { RecentSignals } from '../components/RecentSignals';
@@ -100,41 +99,34 @@ export const Workbench: React.FC<WorkbenchProps> = ({
       {/* Row 1: Workflow Steps */}
       <CardWorkflow tasks={data.tasks} onNavigate={onNavigate} />
 
-      {/* Row 2: Grid of Overview, Positions, Todo */}
+      {/* Row 2: Market snapshot and daily actions */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '320px 1fr 340px',
+        gridTemplateColumns: 'minmax(300px, 0.9fr) minmax(360px, 1.1fr)',
         gap: '24px',
       }}>
-        {/* Left Column: Today's Overview */}
         <div>
           <TodayOverview overview={data.overview} onRefresh={onRefresh} isLoading={isLoading} />
         </div>
-        
-        {/* Middle Column: My Positions */}
-        <div>
-          <Positions positions={data.positions} onViewAll={() => onNavigate('observe')} />
-        </div>
 
-        {/* Right Column: Todo Checklist */}
         <div>
           <TodoList tasks={data.tasks} onToggleTask={onToggleTask} onNavigate={onNavigate} />
         </div>
       </div>
 
-      {/* Row 3: Grid of System Status & Recent Signals */}
+      {/* Row 3: Signals take priority, system health stays scannable */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: 'minmax(420px, 1.35fr) minmax(300px, 0.65fr)',
         gap: '24px',
         marginBottom: '24px'
       }}>
         <div>
-          <SystemStatusPanel statuses={data.system_status} />
+          <RecentSignals signals={data.signals} onViewAll={() => onNavigate('signals')} />
         </div>
         
         <div>
-          <RecentSignals signals={data.signals} onViewAll={() => onNavigate('signals')} />
+          <SystemStatusPanel statuses={data.system_status} />
         </div>
       </div>
       

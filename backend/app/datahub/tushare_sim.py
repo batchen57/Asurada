@@ -43,6 +43,27 @@ def get_tushare_token() -> str:
         pass
     return ""
 
+def is_simulation_mode() -> bool:
+    """
+    Checks if system is in trading simulation mode (default is True).
+    If True, we bypass real external HTTP API calls and use high-fidelity simulated data directly.
+    """
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    db_path = os.path.abspath(os.path.join(current_dir, "..", "..", "asurada.db"))
+    if not os.path.exists(db_path):
+        db_path = "asurada.db"
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM configuration WHERE key = 'is_trading_simulation'")
+        row = cursor.fetchone()
+        conn.close()
+        if row and row[0]:
+            return row[0].strip().lower() == "true"
+    except Exception:
+        pass
+    return True
+
 def generate_stock_history(symbol: str, name: str, base_price: float, trend: float, days: int = 250):
     """
     Generates high-fidelity daily price history for 250 trading days,
@@ -135,7 +156,7 @@ def get_tushare_daily(symbol: str, limit: int = 250) -> List[Dict[str, Any]]:
     start_time = time.time()
     token = get_tushare_token()
     
-    if token:
+    if token and not is_simulation_mode():
         url = "https://api.tushare.pro"
         # We fetch more trading calendar days to make sure we hit the target limit
         end_date = datetime.now()
@@ -152,7 +173,7 @@ def get_tushare_daily(symbol: str, limit: int = 250) -> List[Dict[str, Any]]:
         }
         try:
             with httpx.Client() as client:
-                response = client.post(url, json=payload, timeout=12.0)
+                response = client.post(url, json=payload, timeout=1.5)
                 duration_ms = int((time.time() - start_time) * 1000)
                 if response.status_code == 200:
                     data = response.json()
@@ -273,7 +294,7 @@ def get_tushare_all_metadata() -> List[Dict[str, str]]:
     # Target sectors for quantitative leader discovery (matching Tushare classifications)
     target_sectors = ["白酒", "半导体", "医疗保健", "电气设备", "汽车整车", "软件服务", "元器件", "游戏", "IT设备", "证券"]
     
-    if token:
+    if token and not is_simulation_mode():
         url = "https://api.tushare.pro"
         payload_basic = {
             "api_name": "stock_basic",
@@ -286,7 +307,7 @@ def get_tushare_all_metadata() -> List[Dict[str, str]]:
         try:
             with httpx.Client() as client:
                 # 1. Query stock basic metadata
-                r_basic = client.post(url, json=payload_basic, timeout=12.0)
+                r_basic = client.post(url, json=payload_basic, timeout=1.5)
                 duration_ms = int((time.time() - start_time) * 1000)
                 
                 if r_basic.status_code == 200:
@@ -305,7 +326,7 @@ def get_tushare_all_metadata() -> List[Dict[str, str]]:
                                 "params": {"trade_date": test_date},
                                 "fields": "ts_code,total_mv"
                             }
-                            r_daily = client.post(url, json=payload_daily, timeout=10.0)
+                            r_daily = client.post(url, json=payload_daily, timeout=1.5)
                             if r_daily.status_code == 200:
                                 daily_data = r_daily.json()
                                 if "data" in daily_data and "items" in daily_data["data"] and daily_data["data"]["items"]:
@@ -479,7 +500,7 @@ def get_tushare_financial_specs(symbols: List[str]) -> Dict[str, Dict[str, Any]]
     for sym in symbols:
         specs[sym] = default_specs.get(sym, {"shares_billion": 1.0, "pe": 20.0, "daily_turnover_million": 100.0, "earnings_growth": 15.0})
         
-    if not token:
+    if not token or is_simulation_mode():
         duration_ms = int((time.time() - start_time) * 1000) + random.randint(30, 80)
         record_audit_log_sync(
             service_name="数据源服务 (Tushare Pro)",
@@ -511,7 +532,7 @@ def get_tushare_financial_specs(symbols: List[str]) -> Dict[str, Dict[str, Any]]
         item_start_time = time.time()
         try:
             with httpx.Client() as client:
-                response = client.post(url, json=payload, timeout=10.0)
+                response = client.post(url, json=payload, timeout=1.5)
                 duration_ms = int((time.time() - item_start_time) * 1000)
                 if response.status_code == 200:
                     data = response.json()
@@ -588,7 +609,7 @@ def get_tushare_financial_specs(symbols: List[str]) -> Dict[str, Dict[str, Any]]
         item_start_time = time.time()
         try:
             with httpx.Client() as client:
-                response = client.post(url, json=payload, timeout=10.0)
+                response = client.post(url, json=payload, timeout=1.5)
                 duration_ms = int((time.time() - item_start_time) * 1000)
                 if response.status_code == 200:
                     data = response.json()

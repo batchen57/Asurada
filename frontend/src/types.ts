@@ -137,3 +137,18 @@ export interface DeepResearchResponse {
   generated_at: string;
 }
 
+export interface SectorStockConfig {
+  symbol: string;
+  name: string;
+  theme: string;
+  role: string;
+  signal: string;
+  risk: string;
+}
+
+export interface HierarchicalSectorConfig {
+  sector: string;
+  stocks: SectorStockConfig[];
+}
+
+

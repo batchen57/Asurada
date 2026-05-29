@@ -19,7 +19,7 @@ export const CardWorkflow: React.FC<CardWorkflowProps> = ({ tasks, onNavigate })
     {
       id: 'plan',
       phase: 'Plan',
-      num: '01',
+      num: '02',
       title: '盘前计划',
       enTitle: 'Plan',
       desc: '用“截至前一交易日”的稳定数据，把今天的操作变成可执行清单',
@@ -33,7 +33,7 @@ export const CardWorkflow: React.FC<CardWorkflowProps> = ({ tasks, onNavigate })
     {
       id: 'observe',
       phase: 'Observe',
-      num: '02',
+      num: '03',
       title: '盘中盯盘',
       enTitle: 'Observe',
       desc: '默认静默 | 只盯“持仓/观察池”，低频巡检 + 阈值触发',
@@ -47,7 +47,7 @@ export const CardWorkflow: React.FC<CardWorkflowProps> = ({ tasks, onNavigate })
     {
       id: 'review',
       phase: 'Review',
-      num: '03',
+      num: '04',
       title: '盘后复盘',
       enTitle: 'Review',
       desc: '用当日完整日线把距离说清楚，发生了什么 → 为什么 → 明天怎么做',
@@ -61,7 +61,7 @@ export const CardWorkflow: React.FC<CardWorkflowProps> = ({ tasks, onNavigate })
     {
       id: 'discovery',
       phase: 'Discovery',
-      num: '04',
+      num: '01',
       title: '选股与题材',
       enTitle: 'Discovery',
       desc: '把“全市噪声音”压缩成可研究的Top清单，并能一键深度分析',
@@ -81,7 +81,7 @@ export const CardWorkflow: React.FC<CardWorkflowProps> = ({ tasks, onNavigate })
       gap: '20px',
       marginBottom: '32px'
     }}>
-      {steps.map((step) => {
+      {[...steps].sort((a, b) => a.num.localeCompare(b.num)).map((step) => {
         const Icon = step.icon;
         const status = getTaskStatus(step.phase);
         const isCompleted = status === '已完成';

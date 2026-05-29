@@ -4,6 +4,7 @@ import {
   CalendarRange, 
   Eye, 
   TrendingUp, 
+  Landmark,
   BookOpen, 
   Database, 
   Sliders, 
@@ -13,48 +14,76 @@ import {
   User,
   ChevronDown,
   ChevronUp,
-  ClipboardList
+  ClipboardList,
+  LogOut
 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  currentUser?: any;
+  onLogout?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, onLogout }) => {
   const menuItems = [
     { id: 'workbench', label: '工作台', subLabel: 'Workbench', icon: LayoutDashboard },
-    { id: 'discovery', label: '选股与题材', subLabel: 'Discovery 04', icon: TrendingUp },
+    {
+      id: 'discovery_group',
+      label: '选股与题材',
+      subLabel: 'Discovery',
+      icon: TrendingUp,
+      children: [
+        { id: 'today_market', label: '今日股市', subLabel: 'Market Today', icon: Landmark },
+        { id: 'discovery', label: '智能选股', subLabel: 'Discovery 01', icon: TrendingUp },
+      ]
+    },
     {
       id: 'plan_manage',
       label: '计划与管理',
       subLabel: 'Plan & Management',
       icon: CalendarRange,
       children: [
-        { id: 'plan', label: '盘前计划', subLabel: 'Plan 01', icon: ClipboardList },
-        { id: 'observe', label: '盘中盯盘', subLabel: 'Observe 02', icon: Eye },
-        { id: 'review', label: '盘后复盘', subLabel: 'Review 03', icon: BookOpen },
+        { id: 'plan', label: '盘前计划', subLabel: 'Plan 02', icon: ClipboardList },
+        { id: 'observe', label: '盘中盯盘', subLabel: 'Observe 03', icon: Eye },
+        { id: 'review', label: '盘后复盘', subLabel: 'Review 04', icon: BookOpen },
       ]
     },
     { id: 'datahub', label: '数据中心', subLabel: 'DataHub', icon: Database },
-    { id: 'strategy', label: '策略中心', subLabel: 'Strategies', icon: Sliders },
-    { id: 'agents', label: '智能体中心', subLabel: 'Agents', icon: Bot },
-    { id: 'signals', label: '信号与告警', subLabel: 'Signals', icon: BellRing },
-    { id: 'audit', label: '审计管理', subLabel: 'Audit Logs', icon: ClipboardList },
-    { id: 'settings', label: '系统设置', subLabel: 'Settings', icon: Settings },
+    {
+      id: 'strategy_group',
+      label: '策略中心',
+      subLabel: 'Strategy Center',
+      icon: Sliders,
+      children: [
+        { id: 'strategy', label: '参数配置', subLabel: 'Parameters', icon: Sliders },
+        { id: 'signals', label: '信号与告警', subLabel: 'Signals', icon: BellRing },
+        { id: 'agents', label: '智能体配置', subLabel: 'Agent Config', icon: Bot },
+      ]
+    },
+    {
+      id: 'audit_group',
+      label: '审计管理',
+      subLabel: 'Audit & Users',
+      icon: ClipboardList,
+      children: [
+        { id: 'audit_logs', label: '接口审计管理', subLabel: 'Audit Logs', icon: ClipboardList },
+        { id: 'user_manage', label: '管理员用户管理', subLabel: 'User Management', icon: User },
+      ]
+    },
+    {
+      id: 'config_center_group',
+      label: '配置中心',
+      subLabel: 'Config Center',
+      icon: Settings,
+      children: [
+        { id: 'sector_config', label: '板块配置', subLabel: 'Sector Config', icon: Sliders },
+        { id: 'settings', label: '系统设置', subLabel: 'Settings', icon: Settings },
+      ]
+    },
   ];
 
-  // Initialize the sub-menu to open if one of the children is active
-  const [isPlanManageOpen, setIsPlanManageOpen] = React.useState(() => {
-    return ['plan', 'observe', 'review'].includes(activeTab);
-  });
-
-  // Keep accordion expanded if activeTab changes externally (e.g. from Workbench)
-  React.useEffect(() => {
-    if (['plan', 'observe', 'review'].includes(activeTab)) {
-      setIsPlanManageOpen(true);
-    }
-  }, [activeTab]);
+  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>({});
 
   return (
     <div className="sidebar-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'space-between', padding: '24px 0' }}>
@@ -95,12 +124,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
             // If item has children, render as collapsible accordion
             if ('children' in item && item.children) {
               const hasActiveChild = item.children.some(child => child.id === activeTab);
+              const isGroupOpen = hasActiveChild || openGroups[item.id] || false;
               
               return (
                 <div key={item.id} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {/* Parent Button */}
                   <button
-                    onClick={() => setIsPlanManageOpen(!isPlanManageOpen)}
+                    onClick={() => setOpenGroups(prev => ({ ...prev, [item.id]: !isGroupOpen }))}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -129,7 +159,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                       <span style={{ fontSize: '14px', fontWeight: '500' }}>{item.label}</span>
                       <span style={{ fontSize: '10px', opacity: 0.6, marginTop: '1px' }}>{item.subLabel}</span>
                     </div>
-                    {isPlanManageOpen ? (
+                    {isGroupOpen ? (
                       <ChevronUp size={16} style={{ color: '#8e9bb4', flexShrink: 0 }} />
                     ) : (
                       <ChevronDown size={16} style={{ color: '#8e9bb4', flexShrink: 0 }} />
@@ -142,8 +172,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
                     flexDirection: 'column',
                     gap: '4px',
                     paddingLeft: '20px',
-                    maxHeight: isPlanManageOpen ? '200px' : '0px',
-                    opacity: isPlanManageOpen ? 1 : 0,
+                    maxHeight: isGroupOpen ? '220px' : '0px',
+                    opacity: isGroupOpen ? 1 : 0,
                     overflow: 'hidden',
                     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
                   }}>
@@ -248,27 +278,56 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
-          gap: '12px',
+          justifyContent: 'space-between',
           padding: '8px',
           borderRadius: '12px',
           background: 'rgba(255, 255, 255, 0.03)'
         }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            borderRadius: '50%',
-            background: 'rgba(255,255,255,0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white'
-          }}>
-            <User size={22} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, rgba(30, 94, 255, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <User size={18} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ color: 'white', fontSize: '13px', fontWeight: '600' }}>
+                {currentUser ? currentUser.username : '游客用户'}
+              </span>
+              <span style={{ color: '#8e9bb4', fontSize: '10px', marginTop: '1px' }}>
+                {currentUser && currentUser.role === 'admin' ? '系统管理员' : '普通管理员'}
+              </span>
+            </div>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ color: 'white', fontSize: '14px', fontWeight: '500' }}>中低频投资者</span>
-            <span style={{ color: '#8e9bb4', fontSize: '11px', marginTop: '2px' }}>A股为主</span>
-          </div>
+          {onLogout && (
+            <button 
+              onClick={onLogout}
+              title="退出登录"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8e9bb4',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = '#8e9bb4'; e.currentTarget.style.background = 'transparent'; }}
+            >
+              <LogOut size={16} />
+            </button>
+          )}
         </div>
       </div>
     </div>

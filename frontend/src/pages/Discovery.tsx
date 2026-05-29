@@ -209,16 +209,24 @@ export const Discovery: React.FC = () => {
 
   const fetchLatestSnapshot = async () => {
     setIsLoading(true);
+    let shouldRefreshSnapshot = false;
     try {
       const response = await fetch(`${API_BASE_URL}/api/discovery/scan`);
       if (response.ok) {
         const data: DiscoveryScanResponse = await response.json();
         setScanResult(data);
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        shouldRefreshSnapshot = data.top_n.length === 0 || data.candidates.length === 0 || !data.timestamp.startsWith(today);
       }
     } catch (err) {
       console.error('Failed to fetch discovery snapshot:', err);
     } finally {
       setIsLoading(false);
+    }
+
+    if (shouldRefreshSnapshot) {
+      await handleScan();
     }
   };
 
@@ -332,7 +340,7 @@ export const Discovery: React.FC = () => {
             </div>
             <div>
               <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#f8fafc', letterSpacing: '0.5px' }}>
-                选股与题材挖掘 <span style={{ fontSize: '11px', fontWeight: '500', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.1)', padding: '2px 8px', borderRadius: '12px', marginLeft: '8px' }}>Discovery 04</span>
+                选股与题材挖掘 <span style={{ fontSize: '11px', fontWeight: '500', color: '#fbbf24', background: 'rgba(251, 191, 36, 0.1)', padding: '2px 8px', borderRadius: '12px', marginLeft: '8px' }}>Discovery 01</span>
               </h2>
               <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
                 提炼全市场数千只个股及题材炒作噪音，压缩出具备极高盈亏比的 Top 清单，一键调用专家级买方深研分析。

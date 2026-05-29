@@ -8,12 +8,14 @@ import { Plan } from './pages/Plan';
 import { Observe } from './pages/Observe';
 import { Review } from './pages/Review';
 import { Discovery } from './pages/Discovery';
+import { TodayMarket } from './pages/TodayMarket';
 import { DataHubCenter } from './pages/DataHubCenter';
 import { StrategyCenter } from './pages/StrategyCenter';
 import { AgentCenter } from './pages/AgentCenter';
 import { Signals } from './pages/Signals';
 import { SettingsPage } from './pages/Settings';
 import { AuditLogs } from './pages/AuditLogs';
+import { SectorConfig } from './pages/SectorConfig';
 
 import { WorkbenchData, Configuration } from './types';
 import { Bot, X, Sparkles, Send } from 'lucide-react';
@@ -21,6 +23,67 @@ import { Bot, X, Sparkles, Send } from 'lucide-react';
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!localStorage.getItem('asurada_token'));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('asurada_token'));
+  const [currentUser, setCurrentUser] = useState<any>(() => {
+    const saved = localStorage.getItem('asurada_user');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [loginUsername, setLoginUsername] = useState<string>('');
+  const [loginPassword, setLoginPassword] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+  const [isLoginLoading, setIsLoginLoading] = useState<boolean>(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError('');
+    setIsLoginLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginUsername, password: loginPassword })
+      });
+
+      if (response.ok) {
+        const json = await response.json();
+        localStorage.setItem('asurada_token', json.access_token);
+        localStorage.setItem('asurada_user', JSON.stringify(json.user));
+        setToken(json.access_token);
+        setCurrentUser(json.user);
+        setIsAuthenticated(true);
+      } else {
+        const errJson = await response.json();
+        setLoginError(errJson.detail || '登录失败，请检查用户名或密码。');
+      }
+    } catch (err) {
+      console.warn('Backend offline or error, using fallback mock login.', err);
+      // High-fidelity fallback login matching Mock rules in AGENTS.md
+      if (loginUsername === 'admin' && loginPassword === 'admin123') {
+        const mockUser = { id: 1, username: 'admin', role: 'admin', is_active: true, created_at: '2026-05-28 12:00:00' };
+        localStorage.setItem('asurada_token', 'mock_token_jwt');
+        localStorage.setItem('asurada_user', JSON.stringify(mockUser));
+        setToken('mock_token_jwt');
+        setCurrentUser(mockUser);
+        setIsAuthenticated(true);
+      } else {
+        setLoginError('用户名或密码错误。离线演示账号/密码为 admin / admin123');
+      }
+    } finally {
+      setIsLoginLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('asurada_token');
+    localStorage.removeItem('asurada_user');
+    setToken(null);
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+  };
+
   const [activeTab, setActiveTab] = useState<string>('workbench');
   const [data, setData] = useState<WorkbenchData | null>(null);
   const [configs, setConfigs] = useState<Configuration[]>([]);
@@ -207,6 +270,8 @@ function App() {
         );
       case 'discovery':
         return <Discovery />;
+      case 'today_market':
+        return <TodayMarket onNavigate={setActiveTab} />;
       case 'datahub':
         return <DataHubCenter />;
       case 'strategy':
@@ -215,8 +280,10 @@ function App() {
         return <AgentCenter />;
       case 'signals':
         return <Signals signals={data?.signals || []} />;
-      case 'audit':
-        return <AuditLogs />;
+      case 'audit_logs':
+        return <AuditLogs defaultTab="logs" />;
+      case 'user_manage':
+        return <AuditLogs defaultTab="users" />;
       case 'settings':
         return (
           <SettingsPage 
@@ -225,6 +292,8 @@ function App() {
             onResetTasks={handleResetTasks}
           />
         );
+      case 'sector_config':
+        return <SectorConfig />;
       default:
         return <div style={{ padding: '40px', color: '#64748b' }}>模块正在规划开发中...</div>;
     }
@@ -266,11 +335,230 @@ function App() {
     ]
   });
 
+  if (!isAuthenticated) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        width: '100vw',
+        background: 'radial-gradient(circle at center, #0f1a3a 0%, #070d1e 100%)',
+        fontFamily: "'Outfit', 'Inter', system-ui, sans-serif",
+        color: '#cbd5e1',
+        overflow: 'hidden'
+      }}>
+        {/* Glow Effects */}
+        <div style={{
+          position: 'absolute',
+          width: '400px',
+          height: '400px',
+          background: 'radial-gradient(circle, rgba(30, 94, 255, 0.15) 0%, rgba(30, 94, 255, 0) 70%)',
+          top: '10%',
+          left: '15%',
+          pointerEvents: 'none'
+        }} />
+        <div style={{
+          position: 'absolute',
+          width: '500px',
+          height: '500px',
+          background: 'radial-gradient(circle, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0) 70%)',
+          bottom: '10%',
+          right: '15%',
+          pointerEvents: 'none'
+        }} />
+
+        <div style={{
+          width: '100%',
+          maxWidth: '420px',
+          padding: '40px',
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(20px)',
+          borderRadius: '24px',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 10,
+          position: 'relative'
+        }}>
+          {/* Logo */}
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '12px', marginBottom: '32px' }}>
+            <div style={{
+              background: 'linear-gradient(135deg, #1e5eff 0%, #8b5cf6 100%)',
+              width: '42px',
+              height: '42px',
+              borderRadius: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: '22px',
+              boxShadow: '0 0 20px rgba(30, 94, 255, 0.4)'
+            }}>
+              A
+            </div>
+            <span style={{ 
+              color: 'white', 
+              fontSize: '26px', 
+              fontWeight: '800', 
+              letterSpacing: '1px'
+            }}>
+              Asurada
+            </span>
+          </div>
+
+          <h2 style={{ fontSize: '18px', fontWeight: '700', color: 'white', textAlign: 'center', marginBottom: '8px' }}>
+            量化交易辅助系统登入
+          </h2>
+          <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', marginBottom: '28px' }}>
+            专注 A 股多智能体低频稳健决策体系
+          </p>
+
+          {loginError && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.2)',
+              color: '#f87171',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              fontSize: '12px',
+              marginBottom: '20px',
+              lineHeight: '1.5',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{ fontSize: '14px' }}>⚠️</span>
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', letterSpacing: '0.5px' }}>
+                管理员用户名 (USERNAME)
+              </label>
+              <input
+                type="text"
+                placeholder="请输入用户名"
+                required
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  color: 'white',
+                  outline: 'none',
+                  fontSize: '13px',
+                  transition: 'all 0.2s'
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = '1px solid #1e5eff';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.target.style.boxShadow = '0 0 10px rgba(30, 94, 255, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.03)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', letterSpacing: '0.5px' }}>
+                访问凭证密码 (PASSWORD)
+              </label>
+              <input
+                type="password"
+                placeholder="请输入密码"
+                required
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  color: 'white',
+                  outline: 'none',
+                  fontSize: '13px',
+                  transition: 'all 0.2s'
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = '1px solid #1e5eff';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.05)';
+                  e.target.style.boxShadow = '0 0 10px rgba(30, 94, 255, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                  e.target.style.background = 'rgba(255, 255, 255, 0.03)';
+                  e.target.style.boxShadow = 'none';
+                }}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={isLoginLoading}
+              style={{
+                background: 'linear-gradient(135deg, #1e5eff 0%, #8b5cf6 100%)',
+                color: 'white',
+                border: 'none',
+                padding: '14px',
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontWeight: '700',
+                cursor: 'pointer',
+                transition: 'all 0.3s',
+                boxShadow: '0 4px 15px rgba(30, 94, 255, 0.3)',
+                marginTop: '10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(30, 94, 255, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'none';
+                e.currentTarget.style.boxShadow = '0 4px 15px rgba(30, 94, 255, 0.3)';
+              }}
+            >
+              {isLoginLoading ? '正在验证凭证...' : '安全登入'}
+            </button>
+          </form>
+
+          {/* Hint Footer */}
+          <div style={{
+            marginTop: '32px',
+            paddingTop: '16px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+            textAlign: 'center',
+            fontSize: '11px',
+            color: '#64748b'
+          }}>
+            <span>首次访问使用系统预置管理员账号登入</span>
+            <div style={{ marginTop: '6px', color: '#1e5eff', fontFamily: 'monospace' }}>
+              admin / admin123
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100vw' }}>
       
       {/* Sidebar - fixed left */}
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} currentUser={currentUser} onLogout={handleLogout} />
       
       {/* Main Content Area - padded left by 260px */}
       <div style={{ 
