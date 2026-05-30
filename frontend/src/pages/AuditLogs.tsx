@@ -15,6 +15,7 @@ import {
   HelpCircle,
   Eye
 } from 'lucide-react';
+import { ModelLogs } from '../components/ModelLogs';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -39,11 +40,11 @@ interface AuditStats {
 }
 
 interface AuditLogsProps {
-  defaultTab?: 'logs' | 'users';
+  defaultTab?: 'logs' | 'users' | 'model_logs';
 }
 
 export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'logs' | 'users'>(defaultTab || 'logs');
+  const [activeSubTab, setActiveSubTab] = useState<'logs' | 'users' | 'model_logs'>(defaultTab || 'logs');
 
   // User Management State
   const [users, setUsers] = useState<any[]>([]);
@@ -488,9 +489,13 @@ export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
             <ClipboardList size={22} style={{ color: '#1e5eff' }} />
           </div>
           <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>系统审计与留痕管理 (Audit & Logging)</h2>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>
+              {activeSubTab === 'model_logs' ? 'AI模型调用记录 (Model Call Logs)' : '系统审计与留痕管理 (Audit & Logging)'}
+            </h2>
             <p style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
-              系统对所有出站及对外调用的 API 服务（Tushare、飞书通知、新浪 MCP 行情）进行实时监听、性能计时与敏感参数存证留痕。
+              {activeSubTab === 'model_logs' 
+                ? '系统对所有 AI 模型调用（任务名称、调用模型、接口时延、总消耗 Token 以及入参出参 Payloads）进行秒级监控与留痕存证。' 
+                : '系统对所有出站及对外调用的 API 服务（Tushare、飞书通知、新浪 MCP 行情）进行实时监听、性能计时与敏感参数存证留痕。'}
             </p>
           </div>
         </div>
@@ -544,7 +549,7 @@ export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
                 清空所有日志
               </button>
             </>
-          ) : (
+          ) : activeSubTab === 'users' ? (
             <>
               <button
                 onClick={fetchUsers}
@@ -593,7 +598,7 @@ export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
                 新增管理员
               </button>
             </>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -1037,6 +1042,8 @@ export const AuditLogs: React.FC<AuditLogsProps> = ({ defaultTab }) => {
 
       </div>
     </>
+  ) : activeSubTab === 'model_logs' ? (
+    <ModelLogs />
   ) : (
         <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
           {/* Users Table or Grid */}

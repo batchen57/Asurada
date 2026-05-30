@@ -9,11 +9,34 @@ interface TodayOverviewProps {
 }
 
 export const TodayOverview: React.FC<TodayOverviewProps> = ({ overview, onRefresh, isLoading }) => {
+  const isRealtime = overview.is_realtime ?? false;
   return (
     <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Title & Refresh */}
+      <style>{`
+        @keyframes spin-refresh {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>今日概览</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>今日概览</h3>
+          {!isRealtime && (
+            <span style={{
+              fontSize: '10px',
+              fontWeight: '600',
+              color: '#f59e0b',
+              background: 'rgba(245, 158, 11, 0.08)',
+              padding: '2px 8px',
+              borderRadius: '6px',
+              border: '1px solid rgba(245, 158, 11, 0.15)',
+              letterSpacing: '0.5px'
+            }}>
+              仿真数据
+            </span>
+          )}
+        </div>
         <button 
           onClick={onRefresh}
           disabled={isLoading}
@@ -29,7 +52,13 @@ export const TodayOverview: React.FC<TodayOverviewProps> = ({ overview, onRefres
             fontWeight: '500'
           }}
         >
-          <RefreshCw size={14} className={isLoading ? 'glow-active' : ''} style={{ transition: 'transform 0.5s ease', transform: isLoading ? 'rotate(360deg)' : 'none' }} />
+          <RefreshCw 
+            size={14} 
+            className={isLoading ? 'glow-active' : ''} 
+            style={{ 
+              animation: isLoading ? 'spin-refresh 1s linear infinite' : 'none'
+            }} 
+          />
           刷新
         </button>
       </div>
@@ -133,11 +162,23 @@ export const TodayOverview: React.FC<TodayOverviewProps> = ({ overview, onRefres
         marginTop: '20px', 
         fontSize: '11px', 
         color: '#94a3b8', 
-        textAlign: 'left',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         borderTop: '1px solid rgba(226, 232, 240, 0.6)',
         paddingTop: '12px'
       }}>
-        数据截至 {overview.data_cutoff}
+        <span>数据截至 {overview.data_cutoff}</span>
+        {!isRealtime ? (
+          <span style={{ color: '#f59e0b', fontWeight: '500' }}>
+            ⚠️ 仿真环境，仅供参考
+          </span>
+        ) : (
+          <span style={{ color: '#10b981', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }}></span>
+            实时行情 (新浪)
+          </span>
+        )}
       </div>
     </div>
   );

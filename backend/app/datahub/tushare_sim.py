@@ -261,10 +261,30 @@ def get_tushare_daily(symbol: str, limit: int = 250) -> List[Dict[str, Any]]:
             
     # Generic fallback
     if not prices:
+        base_price = 100.0
+        try:
+            # Dynamically fetch real close price from Sina as base_price to align simulated history
+            code, market = symbol.split(".")
+            sina_code = f"sh{code}" if market == "SH" else f"sz{code}"
+            url = f"https://hq.sinajs.cn/list={sina_code}"
+            with httpx.Client(headers={"Referer": "https://finance.sina.com.cn/"}, timeout=1.5) as client:
+                res = client.get(url)
+                if res.status_code == 200:
+                    text = res.content.decode("gb18030", errors="ignore")
+                    parts = text.split('"')
+                    if len(parts) > 1:
+                        fields = parts[1].split(",")
+                        if len(fields) > 3 and float(fields[3]) > 0:
+                            base_price = float(fields[3])
+                        elif len(fields) > 2 and float(fields[2]) > 0:
+                            base_price = float(fields[2])
+        except Exception:
+            pass
+
         prices = generate_stock_history(
             symbol=symbol,
             name=symbol,
-            base_price=100.0,
+            base_price=base_price,
             trend=0.01,
             days=limit
         )

@@ -101,6 +101,7 @@ class OverviewResponse(BaseModel):
     turnover_billion: float
     turnover_change_pct: float
     data_cutoff: str
+    is_realtime: Optional[bool] = False
 
 class WorkbenchDataResponse(BaseModel):
     overview: OverviewResponse
@@ -287,6 +288,215 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     role: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class FocusStockBase(BaseModel):
+    symbol: str
+    name: str
+    sector: Optional[str] = None
+    rating: Optional[str] = "⭐ 中线关注"
+    custom_tags: Optional[str] = ""
+    investment_logic: Optional[str] = ""
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    notes: Optional[str] = ""
+
+class FocusStockCreate(FocusStockBase):
+    pass
+
+class FocusStockUpdate(BaseModel):
+    rating: Optional[str] = None
+    custom_tags: Optional[str] = None
+    investment_logic: Optional[str] = None
+    target_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    notes: Optional[str] = None
+
+class FocusStockResponse(FocusStockBase):
+    id: int
+    added_at: str
+
+# ==========================================
+# AI 投研产业链驾驶舱 Schemas
+# ==========================================
+
+class ResearchSectorBase(BaseModel):
+    name: str
+    category: str
+    description: Optional[str] = None
+    status: Optional[str] = "未开始"
+    report_count: Optional[int] = 0
+    analysis_status: Optional[str] = "未生成"
+    opportunity_level: Optional[str] = "B"
+    risk_level: Optional[str] = "中"
+    last_updated_at: Optional[str] = None
+    created_by: Optional[str] = "system"
+
+class ResearchSectorCreate(ResearchSectorBase):
+    pass
+
+class ResearchSectorResponse(ResearchSectorBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class IndustryChainNodeBase(BaseModel):
+    sector_id: int
+    name: str
+    node_type: Optional[str] = "中游制造"
+    parent_id: Optional[int] = None
+    description: Optional[str] = None
+    cost_ratio: Optional[str] = None
+    localization_rate: Optional[str] = "中"
+    barrier_score: Optional[float] = 50.0
+    substitution_risk_score: Optional[float] = 50.0
+    investment_score: Optional[float] = 50.0
+
+class IndustryChainNodeCreate(IndustryChainNodeBase):
+    pass
+
+class IndustryChainNodeResponse(IndustryChainNodeBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class CostStructureBase(BaseModel):
+    sector_id: int
+    node_id: int
+    module_name: str
+    current_cost: Optional[str] = None
+    target_cost: Optional[str] = None
+    cost_ratio: Optional[str] = None
+    decline_rate: Optional[str] = None
+    year: Optional[str] = None
+    source_type: Optional[str] = "AI推算"
+    confidence_score: Optional[float] = 0.0
+
+class CostStructureCreate(CostStructureBase):
+    pass
+
+class CostStructureResponse(CostStructureBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class ResearchConclusionBase(BaseModel):
+    sector_id: int
+    target_type: str
+    target_id: Optional[int] = None
+    conclusion_type: str
+    content: str
+    confidence_score: Optional[float] = 0.0
+    risk_level: Optional[str] = "中"
+    created_by_ai: Optional[bool] = True
+    review_status: Optional[str] = "待复核"
+    created_at: str
+
+class ResearchConclusionResponse(ResearchConclusionBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class ResearchReportBase(BaseModel):
+    sector_id: int
+    title: str
+    institution: Optional[str] = None
+    author: Optional[str] = None
+    publish_date: Optional[str] = None
+    file_url: Optional[str] = None
+    parse_status: Optional[str] = "已导入"
+    quality_score: Optional[float] = 0.0
+    summary: Optional[str] = None
+    created_at: str
+
+class ResearchReportResponse(ResearchReportBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class EvidenceBase(BaseModel):
+    conclusion_id: int
+    report_id: Optional[int] = None
+    chunk_id: Optional[int] = None
+    page_no: Optional[str] = None
+    original_text: str
+    evidence_type: Optional[str] = "研报原文"
+    confidence_score: Optional[float] = 0.0
+
+class EvidenceResponse(EvidenceBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+
+class ModelConfigBase(BaseModel):
+    name: str
+    identifier: str
+    provider: str
+    description: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    is_default: Optional[str] = "false"
+    capabilities: Optional[List[str]] = []
+
+class ModelConfigCreate(ModelConfigBase):
+    sort_order: Optional[int] = 0
+
+class ModelConfigUpdate(BaseModel):
+    name: Optional[str] = None
+    identifier: Optional[str] = None
+    provider: Optional[str] = None
+    description: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    is_default: Optional[str] = None
+    capabilities: Optional[List[str]] = None
+    sort_order: Optional[int] = None
+    status: Optional[str] = None
+    error_message: Optional[str] = None
+    latency_ms: Optional[int] = None
+    tested_at: Optional[str] = None
+
+class ModelConfigResponse(BaseModel):
+    id: int
+    name: str
+    identifier: str
+    provider: str
+    description: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    is_default: str
+    capabilities: List[str]
+    status: str
+    error_message: Optional[str] = None
+    latency_ms: int
+    tested_at: Optional[str] = None
+    sort_order: int
+
+    class Config:
+        from_attributes = True
+
+
+class ModelLogResponse(BaseModel):
+    id: int
+    task_name: Optional[str] = None
+    task_id: str
+    username: Optional[str] = None
+    user_id: Optional[str] = None
+    model_id: str
+    model_url: str
+    status_code: str
+    started_at: str
+    ended_at: str
+    input_tokens: int
+    output_tokens: int
+    request_payload: Optional[Any] = None
+    response_body: Optional[Any] = None
+
+    class Config:
+        from_attributes = True
+
+
 
 
 

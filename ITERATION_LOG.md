@@ -7,7 +7,7 @@
 
 ## 🚀 核心技术迭代脉络
 
-Asurada 系统的开发历经六个核心阶段，旨在将量化趋势研判与极致的交易纪律、主动降噪机制相结合，打造一个适合个人投资者的高保真全功能量化决策工作台。
+Asurada 系统的开发历经九个核心阶段，旨在将量化趋势研判与极致的交易纪律、主动降噪机制相结合，打造一个适合个人投资者的高保真全功能量化决策工作台。
 
 ```
 [版本更新总览]
@@ -17,6 +17,9 @@ v1.2.0 (2026-05-22) - 盘后复盘、数据质量门控与降噪审计系统 (Sc
 v1.3.0 (2026-05-26) - 系统审计与接口调用留痕管理系统 (Milestone 4) 全功能上线
 v1.4.0 (2026-05-29) - 今日股市大盘与个股买方画像预测大盘 (Milestone 5) 全功能上线
 v1.5.0 (2026-05-29) - 多用户 JWT 身份鉴权与安全审计控制系统 (Milestone 6) 全功能交付
+v1.6.0 (2026-05-30) - 重点筛选池与个股深度投研画像系统 (Milestone 7) 全功能上线
+v1.7.0 (2026-05-30) - AI 投研产业链驾驶舱深度研究系统 (Milestone 8) 全功能交付
+v1.8.0 (2026-05-30) - AI 模型配置管理中心与模型调用审计系统 (Milestone 9) 全功能上线
 ```
 
 ---
@@ -171,6 +174,67 @@ v1.5.0 (2026-05-29) - 多用户 JWT 身份鉴权与安全审计控制系统 (Mil
 
 ---
 
+## 🔵 v1.6.0 Milestone 7: 重点筛选池与个股深度投研画像系统 (2026-05-30)
+
+### 1. 核心任务目标
+- 构建个人化"重点筛选池 (Focus Watchlist)"，用户可从今日大盘或智能选股模块一键收藏关注标的。
+- 对每只重点池个股提供全维度深度投研画像：买方评级、投资逻辑、止盈/止损目标、自定义标签及研究笔记。
+- 实现个股详情穿透页面（StockDetail），整合 K 线图表、成本分布、基本面数据、资金流向等多模块视图。
+- 完善重点池全套 CRUD API 并集成非阻塞审计日志记录。
+
+### 2. 关键技术实现与交付文件
+- **ORM 模型**: [models.py](file:///d:/WorkSpace/Asurada/backend/app/models.py) 新增 `FocusStock` 实体表，物理留存 symbol、name、sector、added_at、rating（⭐评级）、custom_tags（自定义标签）、investment_logic（投资逻辑）、target_price（目标价）、stop_loss（止损价）及 notes（研究笔记）。
+- **全套 CRUD API**: [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py) 新增 `/api/focus-watchlist` GET/POST/PUT/DELETE 四端点。添加时自动排重，更新与删除时非阻塞审计 `record_audit_log_sync` 切面捕获。
+- **Pydantic 契约**: [schemas.py](file:///d:/WorkSpace/Asurada/backend/app/schemas.py) 新增 `FocusStockBase`、`FocusStockCreate`、`FocusStockUpdate`、`FocusStockResponse` 四层数据模型。
+- **重点筛选池前端**: [FocusWatchlist.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/FocusWatchlist.tsx) 构建高颜值重点池管理面板，支持卡片式一览、评级星标快捷筛选、自定义标签渲染、投资逻辑折叠展示，以及一键添加/编辑/移出操作。
+- **个股详情穿透**: [StockDetail.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/StockDetail.tsx) 实现个股深度画像页面，涵盖 K 线走势图、成本分布柱状图、基本面指标卡片（ROE/PE/市值/换手率）及资金流向分析，支持从今日大盘与重点池无缝跳转。
+- **导航整合**: [Sidebar.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/Sidebar.tsx) 在"选股与题材"分组下新增"重点筛选池 (Focus Watchlist)"入口，使用 Star 图标。
+
+---
+
+## 🟠 v1.7.0 Milestone 8: AI 投研产业链驾驶舱深度研究系统 (2026-05-30)
+
+### 1. 核心任务目标
+- 构建**研报驱动型产业链深度研究系统**，而非简单看板。核心定位："结论必须来自研报，AI 推理必须有证据溯源"。
+- 实现投研板块（ResearchSector）生命周期管理，支持按行业主题（人形机器人、半导体设备、固态电池等）建立独立研究空间。
+- 构建产业链节点画布（IndustryChainNode），可视化展示上中下游核心模块、成本占比、国产化率、壁垒评分及替代风险。
+- 实现 BOM 成本结构监测（CostStructure），追踪降本路径与目标成本演化。
+- 研发 AI 投研结论（ResearchConclusion）与证据溯源链（Evidence），每条 AI 结论追溯至：结论 → 研报 → 页码 → 原文片段 → 置信度评分。
+- 构建研报索引系统（ResearchReport），录入机构研报元数据与质量评分。
+
+### 2. 关键技术实现与交付文件
+- **6 张核心 ORM 关系表**: [models.py](file:///d:/WorkSpace/Asurada/backend/app/models.py) 新增 `ResearchSector`（投研板块）、`ResearchReport`（研报索引）、`IndustryChainNode`（产业链节点）、`CostStructure`（成本结构）、`ResearchConclusion`（AI 投研结论）、`Evidence`（证据溯源链），构成完整的"板块 → 节点/成本/结论 → 研报证据"层级关系模型。
+- **7 个 RESTful API 端点**: [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py) 新增 `/api/cockpit/sectors` GET/POST、`/api/cockpit/sectors/{sector_id}/nodes`、`/costs`、`/conclusions`、`/reports` 及 `/api/cockpit/conclusions/{conclusion_id}/evidences` 证据链穿透端点。
+- **12 个 Pydantic 数据契约**: [schemas.py](file:///d:/WorkSpace/Asurada/backend/app/schemas.py) 新增覆盖全部 6 个实体的 Base/Create/Response 三层 Pydantic Schema。
+- **种子数据**: [loader.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/loader.py) 预填充 3 个板块（人形机器人、半导体设备、固态电池）+ 3 个节点 + 2 个成本 + 2 条结论 + 2 份研报 + 2 条证据，实现首次启动即可演示。
+- **板块管理列表**: [CockpitList.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/CockpitList.tsx) 实现高颜值投研板块管理面板，顶部四大统计指标（板块数/已分析/研报数/AI智能体），支持新建板块模态表单（名称/分类/机会等级/风险等级/描述），卡片式板块一览并可跳转产业链画布。
+- **产业链深度画布**: [CockpitDashboard.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/CockpitDashboard.tsx) 实现沉浸式产业链研究驾驶舱：
+  - **AI 结论横幅**：可点击展开的结论卡片，展示结论类型、内容、置信度评分、复核状态。
+  - **产业链节点画布**：网格式节点卡片，展示核心模块名称/类型/成本占比/国产化率/投资价值分。点击节点展开"检测器"面板，显示壁垒评分与替代风险评分进度条。
+  - **BOM 成本监测面板**：成本项列表，含当前成本/目标成本/降本速率/置信度/数据来源。
+  - **证据溯源链**：展示研报原文片段引用，含页码、置信度、关联研报元数据。
+  - **研报索引**：已录入研报列表及质量评分展示。
+- **导航整合**: [Sidebar.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/Sidebar.tsx) 将"产业链驾驶舱 (Cockpit)"置为仅次于"工作台"的顶级一级导航项，使用 Network 图标。
+
+---
+
+## 🔴 v1.8.0 Milestone 9: AI 模型配置管理中心与模型调用审计系统 (2026-05-30)
+
+### 1. 核心任务目标
+- 构建系统级 AI 模型配置管理中心（ModelConfig），支持多模型注册、API 密钥管理、连接测试与默认模型切换。
+- 实现模型调用审计日志系统（ModelLog），精确记录每次 AI 模型调用的任务名/调用方/模型标识/Token 消耗/请求载荷/响应体/耗时。
+- 提供模型连接自动化测试（Test Connection），仿真环境下验证模型可达性并实时更新状态。
+
+### 2. 关键技术实现与交付文件
+- **ORM 模型**: [models.py](file:///d:/WorkSpace/Asurada/backend/app/models.py) 新增 `ModelConfig` 表（物理留存 name、identifier、provider、description、api_key、base_url、is_default、capabilities、status、error_message、latency_ms、tested_at、sort_order）及 `ModelLog` 表（留存 task_name、task_id、username、user_id、model_id、model_url、status_code、started_at、ended_at、input_tokens、output_tokens、request_payload、response_body）。
+- **全套模型管理 API**: [main.py](file:///d:/WorkSpace/Asurada/backend/app/main.py) 新增 `/api/models` GET/POST/PUT/DELETE 四端点全套 CRUD，`/api/models/test` 连接测试端点（自动写入 ModelLog 审计），以及 `/api/model-logs` 日志分页检索端点（支持全文搜索）。设默认模型切换时自动互斥重置。
+- **Pydantic 契约**: [schemas.py](file:///d:/WorkSpace/Asurada/backend/app/schemas.py) 新增 `ModelConfigBase`、`ModelConfigCreate`、`ModelConfigUpdate`、`ModelConfigResponse` 及 `ModelLogResponse` 数据模型。
+- **模型配置前端**: [ModelConfig.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/ModelConfig.tsx) 构建模型配置管理面板。支持模型卡片式一览（含 Provider 徽章、Capabilities 标签、连接状态指示器、延迟毫秒数）、新增模型表单、编辑模型参数、一键测试连接、默认模型切换及删除操作。
+- **模型调用记录前端**: [ModelLogs.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/ModelLogs.tsx) 在审计管理模块下新增"模型调用记录 (Model Logs)" Tab，展示模型调用明细表（任务名/调用方/模型/状态码/Token 消耗/耗时），支持全文搜索与详情抽屉展开查看 raw 请求/响应载荷。
+- **导航整合**: [Sidebar.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/Sidebar.tsx) 在"审计管理"分组下新增"模型调用记录 (Model Logs)"入口（使用 Cpu 图标），在"配置中心"分组下新增"模型配置 (Model Config)"入口。
+
+---
+
 ## 📈 核心交付文件清单
 
 | 组件 | 文件路径 | 作用与职责说明 |
@@ -189,6 +253,13 @@ v1.5.0 (2026-05-29) - 多用户 JWT 身份鉴权与安全审计控制系统 (Mil
 | **前端** | [Discovery.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/Discovery.tsx) | 题材与选股面板，支持滑动条交互、Top-N 动画卡片、Checklist 盘口验证及研报阅读器 |
 | **前端** | [Review.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/Review.tsx) | 盘后复盘控制台，多色状态徽章、降级警告悬浮弹窗、历史复盘文件查看与一键应用优化参数按钮 |
 | **前端** | [index.css](file:///d:/WorkSpace/Asurada/frontend/src/index.css) | 毛玻璃微光（Glassmorphism）核心 CSS 变量系统与浮雕面板 Hover 等动效实现 |
+| **后端** | [loader.py](file:///d:/WorkSpace/Asurada/backend/app/datahub/loader.py) | 数据库建表 + 种子数据注入引擎，含投研板块/节点/成本/研报/证据全量初始化 |
+| **前端** | [FocusWatchlist.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/FocusWatchlist.tsx) | 重点筛选池管理面板，支持评级星标、标签渲染、投资逻辑展示与增删改操作 |
+| **前端** | [StockDetail.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/StockDetail.tsx) | 个股深度投研画像页，涵盖 K 线/成本分布/基本面/资金流向穿透视图 |
+| **前端** | [CockpitList.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/CockpitList.tsx) | 投研板块管理列表，统计指标汇总/板块创建/板块卡片导航至产业链画布 |
+| **前端** | [CockpitDashboard.tsx](file:///d:/WorkSpace/Asurada/frontend/src/pages/CockpitDashboard.tsx) | 产业链深度研究驾驶舱，AI结论/节点画布/BOM成本/证据溯源/研报索引五维画面 |
+| **前端** | [ModelConfig.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/ModelConfig.tsx) | AI 模型配置管理面板，模型注册/密钥管理/连接测试/默认模型切换全套 CRUD |
+| **前端** | [ModelLogs.tsx](file:///d:/WorkSpace/Asurada/frontend/src/components/ModelLogs.tsx) | 模型调用审计记录，任务级明细/Token消耗追踪/请求响应载荷穿透查看 |
 
 ---
 *“让交易更有纪律，让投资更加宁静。” — Asurada 智能交易开发委员会*

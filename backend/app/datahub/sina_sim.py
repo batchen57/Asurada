@@ -67,22 +67,93 @@ class SinaMCPSimulator:
     @classmethod
     def get_market_indices(cls):
         """
-        Returns live market index snapshots matching the dashboard exactly.
-        With minor random noise if updated.
+        Returns live market index snapshots from Sina Finance.
+        Falls back to high-fidelity simulated noise on network errors.
         """
         import time
+        import httpx
+        import re
         from ..utils.audit import record_audit_log_sync
         start_time = time.time()
         
         cls.request_count += 1
-        # Base values matching mockup
-        # 上证指数: 3134.25, -0.42%
-        # 深证成指: 10194.36, -0.71%
-        # 创业板指: 2057.58, -1.12%
-        # 成交额: 8542 亿, +6.32%
         
+        # 1. Attempt to fetch real-time index data from Sina Finance HQ
+        url = "https://hq.sinajs.cn/list=s_sh000001,s_sz399001,s_sz399006"
+        headers = {"Referer": "https://finance.sina.com.cn/"}
+        
+        try:
+            with httpx.Client(headers=headers, timeout=2.0) as client:
+                response = client.get(url)
+                if response.status_code == 200:
+                    text = response.content.decode("gb18030", errors="ignore")
+                    lines = text.splitlines()
+                    data_map = {}
+                    for line in lines:
+                        match = re.match(r'var hq_str_s_(?P<code>sh\d{6}|sz\d{6})="(?P<body>.*)";', line.strip())
+                        if match:
+                            code = match.group("code")
+                            body = match.group("body")
+                            fields = body.split(",")
+                            if len(fields) >= 6 and fields[0]:
+                                data_map[code] = {
+                                    "name": fields[0],
+                                    "price": float(fields[1]),
+                                    "change_pct": float(fields[3]),
+                                    "turnover_billion": float(fields[5]) / 10000.0
+                                }
+                    
+                    if "sh000001" in data_map and "sz399001" in data_map and "sz399006" in data_map:
+                        sh_data = data_map["sh000001"]
+                        sz_data = data_map["sz399001"]
+                        gem_data = data_map["sz399006"]
+                        
+                        total_volume = sh_data["turnover_billion"] + sz_data["turnover_billion"]
+                        
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        record_audit_log_sync(
+                            service_name="新浪 MCP 行情服务 (Sina Finance)",
+                            interface_name="marketIndices (大盘指数)",
+                            request_url=url,
+                            request_params={"codes": ["000001.SH", "399001.SZ", "399006.SZ"], "real_time": True},
+                            response_status="SUCCESS",
+                            response_summary=f"[实盘] 成功获取真实上证指数({sh_data['price']:.2f})、深证成指({sz_data['price']:.2f})、创业板指({gem_data['price']:.2f})及两市成交额({total_volume:.1f}亿)快照",
+                            duration_ms=duration_ms
+                        )
+                        
+                        return {
+                            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                            "indices": [
+                                {
+                                    "name": "上证指数",
+                                    "code": "000001.SH",
+                                    "price": round(sh_data["price"], 2),
+                                    "change_pct": round(sh_data["change_pct"], 2),
+                                },
+                                {
+                                    "name": "深证成指",
+                                    "code": "399001.SZ",
+                                    "price": round(sz_data["price"], 2),
+                                    "change_pct": round(sz_data["change_pct"], 2),
+                                },
+                                {
+                                    "name": "创业板指",
+                                    "code": "399006.SZ",
+                                    "price": round(gem_data["price"], 2),
+                                    "change_pct": round(gem_data["change_pct"], 2),
+                                }
+                            ],
+                            "turnover_billion": round(total_volume, 2),
+                            "turnover_change_pct": 6.32,
+                            "data_cutoff": datetime.now().strftime("%m-%d %H:%M"),
+                            "is_realtime": True
+                        }
+        except Exception as e:
+            # Silent fallback to mock on any network error
+            pass
+            
+        # 2. Simulated data fallback if online fetch fails
         noise_factor = random.uniform(-0.0005, 0.0005)
-        
         sse_base = 3134.25
         szse_base = 10194.36
         gem_base = 2057.58
@@ -98,9 +169,9 @@ class SinaMCPSimulator:
             service_name="新浪 MCP 行情服务 (Sina Finance)",
             interface_name="marketIndices (大盘指数)",
             request_url="https://finance.sina.com.cn/api/index",
-            request_params={"codes": ["000001.SH", "399001.SZ", "399006.SZ"]},
+            request_params={"codes": ["000001.SH", "399001.SZ", "399006.SZ"], "simulation_mode": True},
             response_status="SUCCESS",
-            response_summary=f"已拉取上证指数({sse_price:.2f})、深证成指({szse_price:.2f})、创业板指({gem_price:.2f})及两市成交额({volume:.1f}亿)快照",
+            response_summary=f"[模拟] 已拉取上证指数({sse_price:.2f})、深证成指({szse_price:.2f})、创业板指({gem_price:.2f})及两市成交额({volume:.1f}亿)快照",
             duration_ms=duration_ms
         )
         
@@ -128,35 +199,111 @@ class SinaMCPSimulator:
             ],
             "turnover_billion": round(volume, 2),
             "turnover_change_pct": 6.32,
-            "data_cutoff": "05-20 15:00"
+            "data_cutoff": datetime.now().strftime("%m-%d %H:%M"),
+            "is_realtime": False
         }
 
     @classmethod
     def get_realtime_quotes(cls):
         """
         Provides realtime quotes for target symbols.
-        Match stock snapshot values on dashboard:
-        Moutai: 1688.50
-        CATL: 195.80
-        Mindray: 286.66
-        Vanke: 8.92 (down from cost/previous)
+        Fetches live data from Sina Finance and falls back to simulated noise on network errors.
         """
         import time
+        import httpx
+        import re
         from ..utils.audit import record_audit_log_sync
         start_time = time.time()
         
         cls.request_count += 1
-        noise = random.uniform(-0.001, 0.001)
         
+        symbols_map = {
+            "600519.SH": "sh600519",
+            "300750.SZ": "sz300750",
+            "300760.SZ": "sz300760",
+            "000002.SZ": "sz000002",
+            "688981.SH": "sh688981",
+            "002230.SZ": "sz002230",
+            "600030.SH": "sh600030",
+            "002594.SZ": "sz002594"
+        }
+        
+        # 1. Attempt to fetch real-time quotes from Sina Finance HQ
+        sina_codes = ",".join(symbols_map.values())
+        url = f"https://hq.sinajs.cn/list={sina_codes}"
+        headers = {"Referer": "https://finance.sina.com.cn/"}
+        
+        try:
+            with httpx.Client(headers=headers, timeout=2.0) as client:
+                response = client.get(url)
+                if response.status_code == 200:
+                    text = response.content.decode("gb18030", errors="ignore")
+                    lines = text.splitlines()
+                    quotes_data = {}
+                    for line in lines:
+                        match = re.match(r'var hq_str_(?P<code>sh\d{6}|sz\d{6})="(?P<body>.*)";', line.strip())
+                        if match:
+                            code = match.group("code")
+                            body = match.group("body")
+                            fields = body.split(",")
+                            if len(fields) >= 32 and fields[0]:
+                                matching_symbol = None
+                                for k, v in symbols_map.items():
+                                    if v == code:
+                                        matching_symbol = k
+                                        break
+                                
+                                if matching_symbol:
+                                    open_price = float(fields[1])
+                                    prev_close = float(fields[2])
+                                    price = float(fields[3])
+                                    high = float(fields[4])
+                                    low = float(fields[5])
+                                    volume = float(fields[8])
+                                    
+                                    price = price or prev_close or open_price or 1.0
+                                    base = prev_close or price or 1.0
+                                    change_pct = ((price - base) / base) * 100.0
+                                    
+                                    quotes_data[matching_symbol] = {
+                                        "symbol": matching_symbol,
+                                        "name": fields[0],
+                                        "price": round(price, 2),
+                                        "high": round(high, 2),
+                                        "low": round(low, 2),
+                                        "open": round(open_price, 2),
+                                        "volume": int(volume),
+                                        "change_pct": round(change_pct, 2),
+                                        "timestamp": datetime.now().strftime("%H:%M:%S")
+                                    }
+                    if len(quotes_data) >= 4:
+                        duration_ms = int((time.time() - start_time) * 1000)
+                        record_audit_log_sync(
+                            service_name="新浪 MCP 行情服务 (Sina Finance)",
+                            interface_name="globalStockQuoteRealtime (个股实时行情)",
+                            request_url=url,
+                            request_params={"symbols": list(symbols_map.keys()), "real_time": True},
+                            response_status="SUCCESS",
+                            response_summary=f"[实盘] 成功获取持仓及监控个股实时行情快照 (数量: {len(quotes_data)}只)",
+                            duration_ms=duration_ms
+                        )
+                        return quotes_data
+        except Exception as e:
+            # Fallback to simulation
+            pass
+            
+        # 2. Simulated data fallback if online fetch fails
+        noise = random.uniform(-0.001, 0.001)
         duration_ms = random.randint(8, 22)
         symbols = ["600519.SH", "300750.SZ", "300760.SZ", "000002.SZ", "688981.SH", "002230.SZ", "600030.SH", "002594.SZ"]
+        
         record_audit_log_sync(
             service_name="新浪 MCP 行情服务 (Sina Finance)",
             interface_name="globalStockQuoteRealtime (个股实时行情)",
             request_url="https://finance.sina.com.cn/api/quotes",
-            request_params={"symbols": symbols},
+            request_params={"symbols": symbols, "simulation_mode": True},
             response_status="SUCCESS",
-            response_summary=f"成功拉取持仓及监控列表个股 ({len(symbols)}只) 的最新买卖盘五档实时行情快照",
+            response_summary=f"[模拟] 成功拉取持仓及监控列表个股 ({len(symbols)}只) 的最新买卖盘五档实时行情快照",
             duration_ms=duration_ms
         )
         

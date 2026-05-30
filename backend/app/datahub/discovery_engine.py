@@ -79,6 +79,15 @@ class DiscoveryEngine:
         min_daily_turnover = config["min_daily_turnover"]
         history_window = config["history_window_days"]
 
+        # Load Strategy Center dynamic configurations
+        vcp_ma_short_str = await cls.get_configuration(db, "vcp_ma_short") or "50"
+        vcp_ma_long_str = await cls.get_configuration(db, "vcp_ma_long") or "200"
+        vcp_volume_factor_str = await cls.get_configuration(db, "vcp_volume_factor") or "1.5"
+        
+        vcp_ma_short = int(vcp_ma_short_str) if vcp_ma_short_str.isdigit() else 50
+        vcp_ma_long = int(vcp_ma_long_str) if vcp_ma_long_str.isdigit() else 200
+        vcp_volume_factor = float(vcp_volume_factor_str) if vcp_volume_factor_str else 1.5
+
         # Fetch all stocks
         stock_res = await db.execute(select(Stock))
         all_stocks = stock_res.scalars().all()
@@ -190,7 +199,12 @@ class DiscoveryEngine:
                     "ma50": p.ma50, "ma150": p.ma150, "ma200": p.ma200, "ma20": p.ma20
                 })
 
-            vcp_res = VCPAgent.analyze_vcp(prices_history)
+            vcp_res = VCPAgent.analyze_vcp(
+                prices_history,
+                ma_short=vcp_ma_short,
+                ma_long=vcp_ma_long,
+                volume_factor=vcp_volume_factor
+            )
 
             # A. Trend & VCP Strength Score (40% weight)
             trend_score = 0.0

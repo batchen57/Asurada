@@ -8,7 +8,12 @@ class VCPAgent:
     """
     
     @staticmethod
-    def analyze_vcp(prices_history: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def analyze_vcp(
+        prices_history: List[Dict[str, Any]],
+        ma_short: int = 50,
+        ma_long: int = 200,
+        volume_factor: float = 1.5
+    ) -> Dict[str, Any]:
         """
         Analyzes a chronological list of daily prices for VCP characteristics.
         Each item in prices_history should contain:
@@ -34,18 +39,18 @@ class VCPAgent:
         close = latest["close"]
         
         # 1. Trend Template Filters (Minervini's rules)
-        # Rule A: Current price is above MA150 and MA200
+        # Rule A: Current price is above MA150 and MA_long
+        ma_short_val = latest.get(f"ma{ma_short}") or latest.get("ma50") or 0.0
+        ma_long_val = latest.get(f"ma{ma_long}") or latest.get("ma200") or 0.0
         ma150 = latest.get("ma150") or 0.0
-        ma200 = latest.get("ma200") or 0.0
-        ma50 = latest.get("ma50") or 0.0
         
-        is_above_mas = close > ma150 and close > ma200
-        is_ma_alignment = ma50 > ma150 > ma200
+        is_above_mas = close > ma150 and close > ma_long_val
+        is_ma_alignment = ma_short_val > ma150 > ma_long_val
         
-        # Rule B: 200-day moving average is trending up (at least flat or up over 1 month)
+        # Rule B: Long moving average is trending up (at least flat or up over 1 month)
         past_month_index = max(0, len(prices_history) - 22)
-        past_ma200 = prices_history[past_month_index].get("ma200") or 0.0
-        is_ma200_up = ma200 >= past_ma200 * 0.99
+        past_ma_long = prices_history[past_month_index].get(f"ma{ma_long}") or prices_history[past_month_index].get("ma200") or 0.0
+        is_ma200_up = ma_long_val >= past_ma_long * 0.99
         
         # Rule C: Current price is within 25% of 52-week high
         highs = [p["high"] for p in prices_history]
@@ -81,11 +86,11 @@ class VCPAgent:
             is_vcp_setup = widths[0] > widths[1] and widths[-1] < 5.0
             
         # 3. Breakout verification (volume spike and price breakthrough)
-        # Volume > 1.5x of the 20-day average volume
+        # Volume > volume_factor x of the 20-day average volume
         recent_volumes = [p["volume"] for p in prices_history[-21:-1]]
         avg_vol = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 1.0
         latest_vol = latest["volume"]
-        is_volume_spike = latest_vol > avg_vol * 1.5
+        is_volume_spike = latest_vol > avg_vol * volume_factor
         
         # Price closes near the highs of the last 15 days
         recent_high = max(p["high"] for p in prices_history[-15:-1])

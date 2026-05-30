@@ -10,6 +10,7 @@ export interface Overview {
   turnover_billion: number;
   turnover_change_pct: number;
   data_cutoff: string;
+  is_realtime?: boolean;
 }
 
 export interface Position {
@@ -150,5 +151,178 @@ export interface HierarchicalSectorConfig {
   sector: string;
   stocks: SectorStockConfig[];
 }
+
+export interface FocusStockResponse {
+  id: number;
+  symbol: string;
+  name: string;
+  sector?: string;
+  added_at: string;
+  rating?: string;
+  custom_tags?: string;
+  investment_logic?: string;
+  target_price?: number;
+  stop_loss?: number;
+  notes?: string;
+}
+
+export interface StockForecast {
+  year: string;
+  revenue_billion: number;
+  net_profit_billion: number;
+  growth_yoy: string;
+  pe: number;
+}
+
+export interface StockDetails {
+  symbol: string;
+  name: string;
+  sector: string;
+  role: string;
+  theme: string;
+  description: string;
+  moat_analysis: string;
+  financial_highlights: {
+    pe_ttm: number;
+    market_cap_billion: number;
+    revenue_yoy: string;
+    roe: string;
+    cash_flow: string;
+  };
+  forecasts: StockForecast[];
+  future_forecast: string;
+  target_price_range: string;
+  catalysts: string[];
+  risk_warnings: string[];
+}
+
+export interface PredictionPoint {
+  date: string;
+  price: number;
+  upper: number;
+  lower: number;
+}
+
+export interface SentimentDetails {
+  rating: string;
+  score: number;
+  pos: number;
+  neu: number;
+  neg: number;
+  summary: string;
+}
+
+export interface NewsArticle {
+  title: string;
+  source: string;
+  time: string;
+  sentiment: 'positive' | 'neutral' | 'negative';
+  summary: string;
+}
+
+export interface AgentCheck {
+  title: string;
+  status: string;
+  details: string;
+  indicators: string[];
+}
+
+export interface AgentAssessment {
+  brooks_check: AgentCheck;
+  vcp_check: AgentCheck;
+  rating: string;
+  score: number;
+}
+
+export interface StockAnalysisResponse {
+  predictions: PredictionPoint[];
+  sentiment: SentimentDetails;
+  news: NewsArticle[];
+  agent_assessment: AgentAssessment;
+}
+
+// AI 投研产业链驾驶舱 Types
+export interface ResearchSector {
+  id: number;
+  name: string;
+  category: string;
+  description?: string;
+  status?: string;
+  report_count?: number;
+  analysis_status?: string;
+  opportunity_level?: string;
+  risk_level?: string;
+  last_updated_at?: string;
+  created_by?: string;
+}
+
+export interface IndustryChainNode {
+  id: number;
+  sector_id: number;
+  name: string;
+  node_type?: string;
+  parent_id?: number;
+  description?: string;
+  cost_ratio?: string;
+  localization_rate?: string;
+  barrier_score?: number;
+  substitution_risk_score?: number;
+  investment_score?: number;
+}
+
+export interface CostStructure {
+  id: number;
+  sector_id: number;
+  node_id: number;
+  module_name: string;
+  current_cost?: string;
+  target_cost?: string;
+  cost_ratio?: string;
+  decline_rate?: string;
+  year?: string;
+  source_type?: string;
+  confidence_score?: number;
+}
+
+export interface ResearchConclusion {
+  id: number;
+  sector_id: number;
+  target_type: string;
+  target_id?: number;
+  conclusion_type: string;
+  content: string;
+  confidence_score?: number;
+  risk_level?: string;
+  created_by_ai?: boolean;
+  review_status?: string;
+  created_at: string;
+}
+
+export interface ResearchReport {
+  id: number;
+  sector_id: number;
+  title: string;
+  institution?: string;
+  author?: string;
+  publish_date?: string;
+  file_url?: string;
+  parse_status?: string;
+  quality_score?: number;
+  summary?: string;
+  created_at: string;
+}
+
+export interface Evidence {
+  id: number;
+  conclusion_id: number;
+  report_id?: number;
+  chunk_id?: number;
+  page_no?: string;
+  original_text: string;
+  evidence_type?: string;
+  confidence_score?: number;
+}
+
+
 
 

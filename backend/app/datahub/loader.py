@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import engine, Base
-from ..models import Stock, DailyPrice, Position, Task, SystemStatus, Signal, Configuration, User
+from ..models import Stock, DailyPrice, Position, Task, SystemStatus, Signal, Configuration, User, FocusStock, ResearchSector, ResearchReport, IndustryChainNode, CostStructure, ResearchConclusion, Evidence, ModelConfig, ModelLog
 from .tushare_sim import get_tushare_daily, get_tushare_all_metadata
 
 def calculate_ma(prices, period):
@@ -39,14 +39,6 @@ async def seed_database(db: AsyncSession):
         db.add(admin_user)
         await db.commit()
 
-    # Check if we already have stocks seeded
-    result = await db.execute(select(Stock))
-    if result.scalars().first():
-        print("Database already seeded.")
-        return
-
-    print("Seeding database...")
-    
     # 1. Seed Configurations FIRST so they are readable by subsequent sync Tushare Pro calls
     configs_to_seed = [
         {"key": "tushare_token", "value": "a416a177f1a064175e1e1bc2ef915ac33a49b9cc47244684b13e9910"},
@@ -62,7 +54,12 @@ async def seed_database(db: AsyncSession):
         {"key": "discovery_min_market_cap", "value": "100.0"},
         {"key": "discovery_min_daily_turnover", "value": "50.0"},
         {"key": "discovery_trading_style", "value": "中长线(VCP)为主"},
-        {"key": "discovery_history_window_days", "value": "250"}
+        {"key": "discovery_history_window_days", "value": "250"},
+        {"key": "vcp_ma_short", "value": "50"},
+        {"key": "vcp_ma_long", "value": "200"},
+        {"key": "vcp_volume_factor", "value": "1.5"},
+        {"key": "brooks_lookback_window", "value": "5"},
+        {"key": "brooks_stop_atr", "value": "1.5"}
     ]
     
     # Dynamically serialize and seed A-share sector leader definitions in a hierarchical format
@@ -101,7 +98,42 @@ async def seed_database(db: AsyncSession):
             )
             db.add(config_obj)
     await db.flush()
+
+    # Seed Model Configs (placed before early return to ensure execution)
+    models_res = await db.execute(select(ModelConfig))
+    if not models_res.scalars().first():
+        presets = [
+            { "name": 'Gemini 2.0 Pro', "provider": 'Google', "identifier": 'gemini-2.0-pro-exp-02-05', "base_url": '', "description": 'Google 顶尖多模态模型，支持原生视频理解。', "capabilities": 'text,image,video', "is_default": 'true', "sort_order": 10 },
+            { "name": 'Qwen-VL-Max', "provider": 'Alibaba', "identifier": 'qwen-vl-max', "base_url": 'https://dashscope.aliyuncs.com/compatible-mode/v1', "description": '通义千问视觉大模型，视频理解能力强。', "capabilities": 'text,image,video', "is_default": 'false', "sort_order": 20 },
+            { "name": 'DeepSeek Chat', "provider": 'DeepSeek', "identifier": 'deepseek-chat', "base_url": 'https://api.deepseek.com', "description": '深度求索高性能模型，环境分析极具性价比。', "capabilities": 'text', "is_default": 'false', "sort_order": 30 },
+            { "name": 'GPT-4o', "provider": 'OpenAI', "identifier": 'gpt-4o', "base_url": 'https://api.openai.com/v1', "description": 'OpenAI 旗舰全能模型，推理能力卓越。', "capabilities": 'text,image,video', "is_default": 'false', "sort_order": 40 },
+            { "name": 'MiniMax-M2.7', "provider": 'MiniMax', "identifier": 'MiniMax-M2.7', "base_url": 'https://api.minimax.chat/v1', "description": '国产大模型新锐，文本与视觉理解均衡。', "capabilities": 'text,image', "is_default": 'false', "sort_order": 50 }
+        ]
+        for p in presets:
+            m_cfg = ModelConfig(
+                name=p["name"],
+                provider=p["provider"],
+                identifier=p["identifier"],
+                base_url=p["base_url"],
+                description=p["description"],
+                capabilities=p["capabilities"],
+                is_default=p["is_default"],
+                sort_order=p["sort_order"],
+                status="unknown",
+                latency_ms=0
+            )
+            db.add(m_cfg)
+        await db.flush()
+
     await db.commit() # Commit to DB to make it visible to synchronous sqlite3 connections
+
+    # Check if we already have stocks seeded
+    result = await db.execute(select(Stock))
+    if result.scalars().first():
+        print("Database already seeded with stock data, but configuration keys verified/inserted.")
+        return
+
+    print("Seeding remaining database records...")
 
     # 2. Seed Stocks
     meta_stocks = get_tushare_all_metadata()
@@ -244,6 +276,159 @@ async def seed_database(db: AsyncSession):
             status=sig["status"]
         )
         db.add(signal_obj)
+
+    # 7. Seed Cockpit Data (Mock)
+    sectors_res = await db.execute(select(ResearchSector))
+    if not sectors_res.scalars().first():
+        sec1 = ResearchSector(name="人形机器人", category="制造", description="具身智能与先进制造的交叉领域", status="已分析", report_count=170, analysis_status="已生成", opportunity_level="A", risk_level="中", last_updated_at=datetime.now().strftime("%Y-%m-%d"))
+        sec2 = ResearchSector(name="半导体设备", category="TMT", description="卡脖子突破与国产替代核心", status="分析中", report_count=98, analysis_status="未生成", opportunity_level="A", risk_level="中", last_updated_at=datetime.now().strftime("%Y-%m-%d"))
+        sec3 = ResearchSector(name="固态电池", category="新能源", description="下一代电池技术路线", status="待复核", report_count=76, analysis_status="待人工确认", opportunity_level="B", risk_level="高", last_updated_at=datetime.now().strftime("%Y-%m-%d"))
+        db.add_all([sec1, sec2, sec3])
+        await db.flush() # flush to get IDs
+
+        node1 = IndustryChainNode(sector_id=sec1.id, name="谐波减速器", node_type="核心零部件", cost_ratio="35%", localization_rate="中", barrier_score=88, substitution_risk_score=20, investment_score=85)
+        node2 = IndustryChainNode(sector_id=sec1.id, name="行星滚柱丝杠", node_type="核心零部件", cost_ratio="20%", localization_rate="低", barrier_score=92, substitution_risk_score=15, investment_score=90)
+        node3 = IndustryChainNode(sector_id=sec1.id, name="空心杯电机", node_type="核心零部件", cost_ratio="15%", localization_rate="中高", barrier_score=75, substitution_risk_score=30, investment_score=70)
+        db.add_all([node1, node2, node3])
+        await db.flush()
+
+
+        cost1 = CostStructure(sector_id=sec1.id, node_id=node1.id, module_name="谐波减速器", current_cost="3500元", target_cost="1500元", cost_ratio="35%", decline_rate="-15% CAGR", year="2024", source_type="研报提取", confidence_score=0.92)
+        cost2 = CostStructure(sector_id=sec1.id, node_id=node2.id, module_name="行星滚柱丝杠", current_cost="5000元", target_cost="2000元", cost_ratio="20%", decline_rate="-20% CAGR", year="2024", source_type="研报提取", confidence_score=0.85)
+        db.add_all([cost1, cost2])
+
+        con1 = ResearchConclusion(sector_id=sec1.id, target_type="板块", target_id=sec1.id, conclusion_type="核心驱动", content="国产替代加速 + 成本规模化下降 + 下游主机厂放量预期增强。", confidence_score=0.88, risk_level="低", review_status="已确认", created_at=datetime.now().strftime("%Y-%m-%d"))
+        con2 = ResearchConclusion(sector_id=sec1.id, target_type="节点", target_id=node1.id, conclusion_type="替代风险", content="未来 5-10 年谐波减速器被其他路线替代的风险较低，投资壁垒深厚。", confidence_score=0.95, risk_level="低", review_status="已确认", created_at=datetime.now().strftime("%Y-%m-%d"))
+        db.add_all([con1, con2])
+        await db.flush()
+
+        rep1 = ResearchReport(sector_id=sec1.id, title="人形机器人核心零部件报告", institution="华泰证券", author="张聪", publish_date="2024-03-15", file_url="/reports/robot_components.pdf", parse_status="已完成", quality_score=92.5, summary="系统分析人形机器人核心零部件的成本结构、国产化水平及发展趋势。", created_at=datetime.now().strftime("%Y-%m-%d"))
+        rep2 = ResearchReport(sector_id=sec1.id, title="减速器行业深度研究报告", institution="中信证券", author="李明", publish_date="2024-02-20", file_url="/reports/speed_reducer.pdf", parse_status="已完成", quality_score=90.0, summary="减速器全球与中国市场竞争格局，哈默纳科与绿的谐波地位分析。", created_at=datetime.now().strftime("%Y-%m-%d"))
+        db.add_all([rep1, rep2])
+        await db.flush()
+
+        ev1 = Evidence(conclusion_id=con2.id, report_id=rep1.id, original_text="华泰证券《人形机器人核心零部件报告》P18: 谐波减速器在手腕关节等轻负载高精度场景具备不可替代性...", evidence_type="研报原文", confidence_score=0.95)
+        ev2 = Evidence(conclusion_id=con2.id, report_id=rep2.id, original_text="中信证券《减速器行业深度报告》P12: 替代路线尚未成熟，短期内无法撼动哈默纳科与绿的谐波地位。", evidence_type="研报原文", confidence_score=0.92)
+        db.add_all([ev1, ev2])
+
+    # 8. Seed Model Logs (Mock)
+    model_logs_res = await db.execute(select(ModelLog))
+    if not model_logs_res.scalars().first():
+        print("Seeding default model logs...")
+        import json
+        from datetime import timedelta
+        
+        base_time = datetime.now()
+        logs_to_seed = []
+        
+        # 1. Brooks candle pattern scan log
+        logs_to_seed.append(ModelLog(
+            task_name="裸K价格行为分析",
+            task_id="TASK_BROOKS_1024",
+            username="admin",
+            user_id="1",
+            model_id="deepseek-chat",
+            model_url="https://api.deepseek.com/v1/chat/completions",
+            status_code="200",
+            started_at=(base_time - timedelta(minutes=45)).strftime("%Y-%m-%d %H:%M:%S"),
+            ended_at=(base_time - timedelta(minutes=45, seconds=-2)).strftime("%Y-%m-%d %H:%M:%S"),
+            input_tokens=1250,
+            output_tokens=380,
+            request_payload=json.dumps({
+                "model": "deepseek-chat",
+                "messages": [
+                    {"role": "system", "content": "You are a Brooks Price Action analysis agent."},
+                    {"role": "user", "content": "Analyze 300760.SZ (迈瑞医疗) latest 5 daily bars for Pinbar/H1/H2."}
+                ],
+                "temperature": 0.1
+            }, ensure_ascii=False),
+            response_body=json.dumps({
+                "id": "chatcmpl-923hjsdf",
+                "object": "chat.completion",
+                "created": int(base_time.timestamp()),
+                "model": "deepseek-chat",
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": "### 迈瑞医疗 (300760.SZ) 裸K价格行为诊断\n\n1. **K线组合形态**:\n   - 倒数第2根日K线在MA150日均线支撑位收出强力看涨 **Pinbar**，下影线占比约 72%，买盘强劲。\n   - 今日收出阳包阴形态，确认支撑有效，触发 **H2 (High 2) 看涨买入形态**。\n2. **交易策略建议**:\n   - 突破前高 (288.50) 买入，止损设在 Pinbar 最低价 (274.20) 下方。\n   - 目标盈亏比 1:2，首要目标 315.00。"
+                    },
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 1250,
+                    "completion_tokens": 380,
+                    "total_tokens": 1630
+                }
+            }, ensure_ascii=False)
+        ))
+        
+        # 2. Text-To-Speech log
+        logs_to_seed.append(ModelLog(
+            task_name="飞书音频报告生成",
+            task_id="TASK_TTS_9001",
+            username="admin",
+            user_id="1",
+            model_id="MiniMax-M2.7",
+            model_url="https://api.minimax.chat/v1/t2a_v2",
+            status_code="200",
+            started_at=(base_time - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S"),
+            ended_at=(base_time - timedelta(minutes=30, seconds=-4)).strftime("%Y-%m-%d %H:%M:%S"),
+            input_tokens=85,
+            output_tokens=150,
+            request_payload=json.dumps({
+                "text": "Asurada 主调度智能体系统自检完成。当前策略配置正常，宁德时代波动率收缩形态已就绪，建议按盘前计划执行突破买入。",
+                "voice_setting": {
+                    "voice_id": "mimic-voice-001",
+                    "speed": 1.0,
+                    "pitch": 0
+                }
+            }, ensure_ascii=False),
+            response_body=json.dumps({
+                "base_resp": {"status_code": 0, "status_msg": "success"},
+                "audio_url": "http://localhost:8000/api/tts?voice_id=mimic-voice-001",
+                "extra_info": {"duration_ms": 5200}
+            }, ensure_ascii=False)
+        ))
+        
+        # 3. Vision log
+        logs_to_seed.append(ModelLog(
+            task_name="多模态形态审核",
+            task_id="TASK_VISION_4522",
+            username="operator_alpha",
+            user_id="2",
+            model_id="gemini-2.0-pro-exp-02-05",
+            model_url="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-pro-exp-02-05:generateContent",
+            status_code="200",
+            started_at=(base_time - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S"),
+            ended_at=(base_time - timedelta(minutes=15, seconds=-3)).strftime("%Y-%m-%d %H:%M:%S"),
+            input_tokens=2400,
+            output_tokens=120,
+            request_payload=json.dumps({
+                "contents": [{
+                    "parts": [
+                        {"text": "Is this chart showing a standard Volatility Contraction Pattern (VCP)?"},
+                        {"inline_data": {
+                            "mime_type": "image/gif",
+                            "data": "R0lGODlhAQABAIAAAAD/lhP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                        }}
+                    ]
+                }]
+            }, ensure_ascii=False),
+            response_body=json.dumps({
+                "candidates": [{
+                    "content": {
+                        "parts": [{
+                            "text": "Yes. The image shows a classic 3-contraction VCP. The contractions are narrowing from 12% to 4% and now at 1.8%, with volume drying up significantly on the contractions. A breakout above the pivot line with high volume is highly bullish."
+                        }]
+                    },
+                    "finishReason": "STOP"
+                }]
+            }, ensure_ascii=False)
+        ))
+
+        db.add_all(logs_to_seed)
+        await db.flush()
 
     await db.commit()
     print("Database seeding completed successfully.")

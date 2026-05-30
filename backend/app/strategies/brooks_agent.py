@@ -32,7 +32,12 @@ class BrooksAgent:
             return "Doji"
 
     @staticmethod
-    def analyze_price_action(prices_history: List[Dict[str, Any]], support_price: Optional[float] = None) -> Dict[str, Any]:
+    def analyze_price_action(
+        prices_history: List[Dict[str, Any]],
+        support_price: Optional[float] = None,
+        lookback_window: int = 5,
+        stop_atr: float = 1.5
+    ) -> Dict[str, Any]:
         """
         Scans the recent 10-15 bars to detect pullback signals (High 1 / High 2)
         and support confirmations.
@@ -43,7 +48,7 @@ class BrooksAgent:
                 "reason": "数据样本太少",
                 "is_triggered": False
             }
-
+ 
         latest_bars = prices_history[-15:]
         latest_bar = latest_bars[-1]
         prev_bar = latest_bars[-2]
@@ -57,7 +62,7 @@ class BrooksAgent:
             if low_dist < 0.015: # within 1.5% of key support
                 is_at_support = True
                 support_reason = f"价格接近关键支撑位 ({support_price:.2f}元)"
-
+ 
         # 2. Count pullback high breakouts in the last few bars
         # An H1 is the first time a bar's high exceeds the prior bar's high in a pullback.
         # An H2 is the second time it occurs.
@@ -74,9 +79,9 @@ class BrooksAgent:
         # Detect if latest bar breaks above prior bar's high
         is_high_breakout = latest_bar["high"] > prev_bar["high"]
         
-        # Count how many times high broke prior high in the recent 5 days
+        # Count how many times high broke prior high in the recent lookback_window days
         breakout_count = 0
-        pullback_bars = latest_bars[-6:-1] # prior 5 bars
+        pullback_bars = latest_bars[-(lookback_window + 1):-1] # prior lookback_window bars
         for idx in range(1, len(pullback_bars)):
             if pullback_bars[idx]["high"] > pullback_bars[idx-1]["high"]:
                 breakout_count += 1

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, DatabaseZap, RefreshCw, Search, ShieldCheck, TrendingUp, X, Sparkles, AlertTriangle, Lightbulb, Layers, ChevronRight } from 'lucide-react';
+import { Activity, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, DatabaseZap, RefreshCw, Search, ShieldCheck, TrendingUp, X, Sparkles, AlertTriangle, Lightbulb, Layers, ChevronRight, Star } from 'lucide-react';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -295,7 +295,7 @@ const MOCK_LEADER_DETAILS_FALLBACK: Record<string, any> = {
 const LOCAL_STORAGE_KEY_DATA = 'asurada_today_market_data';
 const LOCAL_STORAGE_KEY_TIME = 'asurada_today_market_time';
 
-export const TodayMarket: React.FC<{ onNavigate?: (tab: string) => void }> = ({ onNavigate }) => {
+export const TodayMarket: React.FC<{ onNavigate?: (tab: string, params?: any) => void }> = ({ onNavigate }) => {
   const [query, setQuery] = useState('');
   const [selectedSector, setSelectedSector] = useState('全部');
   const [marketData, setMarketData] = useState<TodayMarketResponse | null>(() => {
@@ -316,6 +316,111 @@ export const TodayMarket: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
     return !localStorage.getItem(LOCAL_STORAGE_KEY_DATA);
   });
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Focus watchlist state
+  const [watchlistSymbols, setWatchlistSymbols] = useState<string[]>([]);
+
+  // Load watchlist items from API or LocalStorage fallback
+  const loadWatchlist = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/focus-watchlist`);
+      if (response.ok) {
+        const list = await response.json();
+        setWatchlistSymbols(list.map((item: any) => item.symbol));
+      } else {
+        // Fallback local storage
+        const saved = localStorage.getItem('asurada_focus_watchlist');
+        if (saved) {
+          const list = JSON.parse(saved);
+          setWatchlistSymbols(list.map((item: any) => item.symbol));
+        }
+      }
+    } catch (error) {
+      console.warn('Backend focus-watchlist fetch failed, using fallback.', error);
+      const saved = localStorage.getItem('asurada_focus_watchlist');
+      if (saved) {
+        try {
+          const list = JSON.parse(saved);
+          setWatchlistSymbols(list.map((item: any) => item.symbol));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  }, []);
+
+  const handleToggleWatchlist = async (stock: any) => {
+    const symbol = stock.symbol;
+    const isAdded = watchlistSymbols.includes(symbol);
+
+    if (isAdded) {
+      // Remove it
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/focus-watchlist/${symbol}`, {
+          method: 'DELETE'
+        });
+        if (response.ok) {
+          setWatchlistSymbols(prev => prev.filter(s => s !== symbol));
+        } else {
+          throw new Error('API delete failed');
+        }
+      } catch (err) {
+        console.warn('API delete failed, performing local storage fallback.', err);
+        // Fallback local storage
+        const saved = localStorage.getItem('asurada_focus_watchlist') || '[]';
+        try {
+          const list = JSON.parse(saved);
+          const updated = list.filter((item: any) => item.symbol !== symbol);
+          localStorage.setItem('asurada_focus_watchlist', JSON.stringify(updated));
+          setWatchlistSymbols(prev => prev.filter(s => s !== symbol));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    } else {
+      // Add it
+      const newStockData = {
+        symbol: stock.symbol,
+        name: stock.name,
+        sector: stock.sector || '全部',
+        rating: '⭐ 中线关注',
+        custom_tags: stock.theme || '',
+        investment_logic: stock.role || '',
+        target_price: null,
+        stop_loss: null,
+        notes: ''
+      };
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/focus-watchlist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newStockData)
+        });
+        if (response.ok) {
+          setWatchlistSymbols(prev => [...prev, symbol]);
+        } else {
+          throw new Error('API post failed');
+        }
+      } catch (err) {
+        console.warn('API post failed, performing local storage fallback.', err);
+        // Fallback local storage
+        const saved = localStorage.getItem('asurada_focus_watchlist') || '[]';
+        try {
+          const list = JSON.parse(saved);
+          const updated = [...list, { ...newStockData, id: Date.now(), added_at: new Date().toISOString().replace('T', ' ').substring(0, 19) }];
+          localStorage.setItem('asurada_focus_watchlist', JSON.stringify(updated));
+          setWatchlistSymbols(prev => [...prev, symbol]);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+    }
+  };
+
+  useEffect(() => {
+    loadWatchlist();
+  }, [loadWatchlist]);
 
   // Selected Stock Details Drawer State
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
@@ -620,6 +725,29 @@ export const TodayMarket: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                   <h3 style={{ fontSize: '18px', color: '#1e293b', marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {item.name}
                     <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: "'JetBrains Mono', monospace" }}>{item.symbol}</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleWatchlist(item);
+                      }}
+                      title={watchlistSymbols.includes(item.symbol) ? '从重点筛选池中移除' : '添加至重点筛选池'}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: watchlistSymbols.includes(item.symbol) ? '#fbbf24' : '#94a3b8',
+                        transition: 'transform 0.2s',
+                        outline: 'none'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.2)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                    >
+                      <Star size={16} fill={watchlistSymbols.includes(item.symbol) ? '#fbbf24' : 'transparent'} />
+                    </button>
                   </h3>
                   <p style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>{item.role} | {item.theme}</p>
                   <span style={{ fontSize: '10px', color: '#94a3b8', display: 'block', marginTop: '8px' }}>个股报价时间: {item.quote_time}</span>
@@ -755,7 +883,36 @@ export const TodayMarket: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                     </span>
                   </div>
                 )}
-                
+                {selectedLeaderQuote && (
+                  <button
+                    onClick={() => handleToggleWatchlist(selectedLeaderQuote)}
+                    style={{
+                      background: watchlistSymbols.includes(selectedSymbol || '') ? 'rgba(251, 191, 36, 0.1)' : '#f1f5f9',
+                      border: 'none',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      cursor: 'pointer',
+                      color: watchlistSymbols.includes(selectedSymbol || '') ? '#fbbf24' : '#64748b',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                      transition: 'all 0.15s ease',
+                      outline: 'none'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = watchlistSymbols.includes(selectedSymbol || '') ? 'rgba(251, 191, 36, 0.15)' : '#e2e8f0';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = watchlistSymbols.includes(selectedSymbol || '') ? 'rgba(251, 191, 36, 0.1)' : '#f1f5f9';
+                    }}
+                  >
+                    <Star size={16} fill={watchlistSymbols.includes(selectedSymbol || '') ? '#fbbf24' : 'transparent'} />
+                    {watchlistSymbols.includes(selectedSymbol || '') ? '已入重点池' : '加入重点池'}
+                  </button>
+                )}
+
                 <button
                   onClick={() => setSelectedSymbol(null)}
                   style={{
@@ -964,32 +1121,64 @@ export const TodayMarket: React.FC<{ onNavigate?: (tab: string) => void }> = ({ 
                 </div>
 
                 {onNavigate && (
-                  <button
-                    onClick={() => {
-                      setSelectedSymbol(null);
-                      onNavigate('discovery');
-                    }}
-                    style={{
-                      background: '#1e5eff',
-                      color: 'white',
-                      border: 'none',
-                      padding: '10px 20px',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(30, 94, 255, 0.16)',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = '#114ed6'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = '#1e5eff'; }}
-                  >
-                    一键深研多维逻辑
-                    <ChevronRight size={14} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button
+                      onClick={() => {
+                        setSelectedSymbol(null);
+                        onNavigate('stock_detail', { 
+                          symbol: selectedSymbol, 
+                          name: selectedLeaderQuote?.name || selectedSymbol, 
+                          sector: selectedLeaderQuote?.sector 
+                        });
+                      }}
+                      style={{
+                        background: 'linear-gradient(135deg, #1e5eff 0%, #8b5cf6 100%)',
+                        color: 'white',
+                        border: 'none',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        boxShadow: '0 4px 12px rgba(30, 94, 255, 0.16)',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+                    >
+                      个股均线与预测
+                      <ChevronRight size={14} />
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setSelectedSymbol(null);
+                        onNavigate('discovery');
+                      }}
+                      style={{
+                        background: '#f1f5f9',
+                        color: '#475569',
+                        border: '1px solid #e2e8f0',
+                        padding: '10px 16px',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#e2e8f0'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = '#f1f5f9'; }}
+                    >
+                      一键深研多维逻辑
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
                 )}
               </div>
             )}

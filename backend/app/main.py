@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from .database import get_db, engine, DATABASE_URL
-from .models import Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog, User
+from .models import Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog, User, FocusStock, ResearchSector, ResearchReport, IndustryChainNode, CostStructure, ResearchConclusion, Evidence, ModelConfig, ModelLog
 from .schemas import (
     StockResponse, DailyPriceResponse, PositionResponse, PositionCreate, PositionUpdate,
     SignalResponse, TaskResponse, TaskUpdate, SystemStatusResponse, ConfigurationResponse,
@@ -23,7 +23,14 @@ from .schemas import (
     DiscoveryScanResponse, DeepResearchResponse, DeepResearchRequest,
     TodayMarketResponse, HierarchicalSectorConfig, SectorStockConfig,
     AuditLogResponse, AuditLogStatsResponse,
-    UserLoginRequest, UserLoginResponse, UserResponse, UserCreate, UserUpdate
+    UserLoginRequest, UserLoginResponse, UserResponse, UserCreate, UserUpdate,
+    FocusStockCreate, FocusStockUpdate, FocusStockResponse,
+    ResearchSectorCreate, ResearchSectorResponse,
+    IndustryChainNodeCreate, IndustryChainNodeResponse,
+    CostStructureCreate, CostStructureResponse,
+    ResearchConclusionResponse,
+    ResearchReportResponse, EvidenceResponse,
+    ModelConfigCreate, ModelConfigUpdate, ModelConfigResponse, ModelLogResponse
 )
 from .utils.auth import hash_password, generate_salt, verify_password, create_access_token, verify_access_token
 from .datahub.loader import initialize_db_schema, seed_database
@@ -69,7 +76,8 @@ async def get_workbench_data(db: AsyncSession = Depends(get_db)):
         indices=indices_data["indices"],
         turnover_billion=indices_data["turnover_billion"],
         turnover_change_pct=indices_data["turnover_change_pct"],
-        data_cutoff=indices_data["data_cutoff"]
+        data_cutoff=indices_data["data_cutoff"],
+        is_realtime=indices_data.get("is_realtime", False)
     )
     
     # User Positions
@@ -248,6 +256,12 @@ DATAHUB_TABLES: Dict[str, Dict[str, Any]] = {
         "model": User,
         "cols": ["id", "username", "role", "is_active", "created_at"],
         "order_by": User.id.asc(),
+    },
+    "focus_stocks": {
+        "label": "重点筛选股票池表",
+        "model": FocusStock,
+        "cols": ["id", "symbol", "name", "sector", "added_at", "rating", "custom_tags", "target_price", "stop_loss"],
+        "order_by": FocusStock.id.desc(),
     },
 }
 
@@ -466,6 +480,82 @@ async def reset_tasks(db: AsyncSession = Depends(get_db)):
 async def get_signals(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Signal).order_by(Signal.id.desc()))
     return res.scalars().all()
+
+@app.delete("/api/signals")
+async def clear_signals(db: AsyncSession = Depends(get_db)):
+    """
+    Clear all signal logs from the database.
+    """
+    from sqlalchemy import delete
+    await db.execute(delete(Signal))
+    
+    # Reset system status details
+    status_res = await db.execute(select(SystemStatus).where(SystemStatus.service_name == "信号与告警"))
+    sig_status = status_res.scalars().first()
+    if sig_status:
+        sig_status.status = "正常"
+        sig_status.detail = "未触发"
+        
+    await db.commit()
+    return {"message": "All signals cleared successfully"}
+
+@app.post("/api/signals/test", response_model=SignalResponse)
+async def trigger_test_signal(db: AsyncSession = Depends(get_db)):
+    """
+    Triggers and simulates a high-fidelity strategy signal for either a VCP breakout or a Brooks naked K reversal.
+    """
+    import random
+    from datetime import datetime
+    
+    # Pick a random stock from our database to make the signal feel realistic
+    stocks_res = await db.execute(select(Stock))
+    stocks_list = stocks_res.scalars().all()
+    
+    if not stocks_list:
+        sym = "300750.SZ"
+        name = "宁德时代"
+    else:
+        # Prefer active positions or focus pool stocks if available, otherwise any stock
+        stock = random.choice(stocks_list)
+        sym = stock.symbol
+        name = stock.name
+        
+    now = datetime.now()
+    time_str = now.strftime("%m-%d %H:%M")
+    
+    # Randomly select a strategy style
+    strat = random.choice(["VCP", "Brooks"])
+    if strat == "VCP":
+        direction = "买入"
+        reason = "波动率三次收缩整理完成，放量向上突破盘整阻力位，激活VCP策略做多进场点"
+    else:
+        direction = random.choice(["关注", "卖出"])
+        if direction == "关注":
+            reason = "缩量回踩关键大周期均线支撑位，日K收出长下影线锤子线(Pinbar)，做多盈亏比极佳"
+        else:
+            reason = "日线收盘长阴线有效跌破短周期持仓均线防守红线，符合风控出场纪律，坚决止损"
+            
+    test_sig = Signal(
+        timestamp=time_str,
+        symbol=sym,
+        name=name,
+        direction=direction,
+        strategy_type=strat,
+        trigger_reason=reason,
+        status="已触发"
+    )
+    db.add(test_sig)
+    
+    # Update system status details to reflect alert trigger
+    status_res = await db.execute(select(SystemStatus).where(SystemStatus.service_name == "信号与告警"))
+    sig_status = status_res.scalars().first()
+    if sig_status:
+        sig_status.status = "正常"
+        sig_status.detail = f"最新触发 {time_str}"
+        
+    await db.commit()
+    await db.refresh(test_sig)
+    return test_sig
 
 # 6. Configuration Settings APIs
 @app.get("/api/config", response_model=List[ConfigurationResponse])
@@ -837,19 +927,196 @@ async def update_today_market_config(data: List[HierarchicalSectorConfig], db: A
         new_cfg = Configuration(key="today_market_sectors", value=json_value)
         db.add(new_cfg)
         
+    await db.flush()
+
+    # Helper function for MA calculation
+    def calculate_ma(prices, period):
+        ma_values = []
+        for i in range(len(prices)):
+            if i < period - 1:
+                ma_values.append(None)
+            else:
+                window = prices[i - period + 1 : i + 1]
+                ma_values.append(round(sum(p["close"] for p in window) / period, 2))
+        return ma_values
+
+    # 1. Sync stocks to db stocks table
+    try:
+        stocks_res = await db.execute(select(Stock))
+        existing_stocks = {s.symbol: s for s in stocks_res.scalars().all()}
+        
+        for sec in data:
+            for stock in sec.stocks:
+                if stock.symbol in existing_stocks:
+                    db_stock = existing_stocks[stock.symbol]
+                    db_stock.name = stock.name
+                    db_stock.sector = sec.sector
+                else:
+                    new_stock = Stock(
+                        symbol=stock.symbol,
+                        name=stock.name,
+                        sector=sec.sector,
+                        is_active=True
+                    )
+                    db.add(new_stock)
+                    existing_stocks[stock.symbol] = new_stock
+    except Exception as e:
+        print(f"Failed to synchronize stocks to DB: {e}")
+
+    # 2. Check and generate daily_prices historical data for newly added stocks
+    try:
+        from .datahub.tushare_sim import get_tushare_daily
+        for sec in data:
+            for stock in sec.stocks:
+                dp_res = await db.execute(select(DailyPrice).where(DailyPrice.symbol == stock.symbol).limit(1))
+                if not dp_res.scalars().first():
+                    # Generate 250 daily price records
+                    raw_prices = get_tushare_daily(stock.symbol, limit=250)
+                    
+                    ma5 = calculate_ma(raw_prices, 5)
+                    ma10 = calculate_ma(raw_prices, 10)
+                    ma20 = calculate_ma(raw_prices, 20)
+                    ma50 = calculate_ma(raw_prices, 50)
+                    ma150 = calculate_ma(raw_prices, 150)
+                    ma200 = calculate_ma(raw_prices, 200)
+                    
+                    for idx, p in enumerate(raw_prices):
+                        dp = DailyPrice(
+                            symbol=stock.symbol,
+                            date=p["date"],
+                            open=p["open"],
+                            high=p["high"],
+                            low=p["low"],
+                            close=p["close"],
+                            volume=float(p["volume"]),
+                            ma5=ma5[idx],
+                            ma10=ma10[idx],
+                            ma20=ma20[idx],
+                            ma50=ma50[idx],
+                            ma150=ma150[idx],
+                            ma200=ma200[idx],
+                            volatility_score=5.0
+                        )
+                        db.add(dp)
+    except Exception as e:
+        print(f"Failed to generate daily prices for newly configured stocks: {e}")
+
+    # 3. Clear memory and file caches
+    global _today_market_memory_cache
+    _today_market_memory_cache = None
+
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    snapshot_file = os.path.join(current_dir, "data", "latest_today_market_snapshot.json")
+    if os.path.exists(snapshot_file):
+        try:
+            os.remove(snapshot_file)
+        except Exception as e:
+            print(f"Failed to delete today market snapshot file: {e}")
+
+    # 4. Proactively regenerate the today market snapshot and seed caches
+    try:
+        leader_defs = []
+        for sec in data:
+            sector_name = sec.sector
+            for stock in sec.stocks:
+                leader_defs.append({
+                    "sector": sector_name,
+                    "symbol": stock.symbol,
+                    "name": stock.name,
+                    "theme": stock.theme,
+                    "role": stock.role,
+                    "signal": stock.signal,
+                    "risk": stock.risk
+                })
+        
+        snapshot = get_today_market_snapshot(leader_defs=leader_defs)
+        
+        # Seed memory cache
+        _today_market_memory_cache = snapshot
+        
+        # Safe Update/Insert for today_market_snapshot to avoid UNIQUE constraint conflicts
+        snap_res = await db.execute(select(Configuration).where(Configuration.key == "today_market_snapshot"))
+        snap_cfg = snap_res.scalars().first()
+        json_value = json.dumps(snapshot, ensure_ascii=False)
+        if snap_cfg:
+            snap_cfg.value = json_value
+        else:
+            new_snap_cfg = Configuration(key="today_market_snapshot", value=json_value)
+            db.add(new_snap_cfg)
+        
+        # Seed file cache
+        os.makedirs(os.path.dirname(snapshot_file), exist_ok=True)
+        with open(snapshot_file, "w", encoding="utf-8") as f:
+            json.dump(snapshot, f, ensure_ascii=False, indent=2)
+            
+    except Exception as e:
+        print(f"Failed to proactively regenerate today market snapshot: {e}")
+
     await db.commit()
-    return {"success": True, "message": "板块配置已成功保存。"}
+    return {"success": True, "message": "板块配置已成功保存并实时更新同步至系统表与今日行情中。"}
 
 @app.get("/api/discovery/today-market/{symbol}/details")
-async def get_market_leader_details_api(symbol: str):
+async def get_market_leader_details_api(symbol: str, db: AsyncSession = Depends(get_db)):
     """
-    获取个股各基本面整体的介绍与未来 2026E/2027E 预测数据
+    获取个股各基本面整体的介绍与未来 2026E/2027E 预测数据，支持自定义标的动态退底生成
     """
-    from .datahub.market_details_data import get_market_leader_details
+    from .datahub.market_details_data import get_market_leader_details, generate_dynamic_stock_details
     details = get_market_leader_details(symbol)
     if not details:
-        raise HTTPException(status_code=404, detail=f"Stock leader details not found for symbol: {symbol}")
+        res = await db.execute(select(Stock).where(Stock.symbol == symbol))
+        st = res.scalars().first()
+        if st:
+            details = generate_dynamic_stock_details(symbol, st.name, st.sector)
+        else:
+            res_focus = await db.execute(select(FocusStock).where(FocusStock.symbol == symbol))
+            fs = res_focus.scalars().first()
+            if fs:
+                details = generate_dynamic_stock_details(symbol, fs.name, fs.sector)
+            else:
+                details = generate_dynamic_stock_details(symbol, symbol, "其它板块")
     return details
+
+@app.get("/api/stocks/{symbol}/analysis")
+async def get_stock_analysis_api(symbol: str, db: AsyncSession = Depends(get_db)):
+    """
+    获取个股的舆情分析、股票智能体技术评估、未来十个工作日股价预测
+    """
+    from .datahub.market_details_data import get_stock_predictions_and_analysis
+    from datetime import datetime
+    
+    # 1. Query name & sector
+    res_stock = await db.execute(select(Stock).where(Stock.symbol == symbol))
+    st = res_stock.scalars().first()
+    if st:
+        name = st.name
+        sector = st.sector
+    else:
+        res_focus = await db.execute(select(FocusStock).where(FocusStock.symbol == symbol))
+        fs = res_focus.scalars().first()
+        if fs:
+            name = fs.name
+            sector = fs.sector
+        else:
+            name = symbol
+            sector = "其它板块"
+            
+    # 2. Query latest price and date
+    res_price = await db.execute(
+        select(DailyPrice)
+        .where(DailyPrice.symbol == symbol)
+        .order_by(DailyPrice.date.desc())
+        .limit(1)
+    )
+    latest_dp = res_price.scalars().first()
+    if latest_dp:
+        price = latest_dp.close
+        date_str = latest_dp.date
+    else:
+        price = 100.0
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+    analysis = get_stock_predictions_and_analysis(symbol, name, price, sector, date_str)
+    return analysis
 
 # ==========================================
 # 9. Audit Logging (审计管理) APIs
@@ -947,6 +1214,107 @@ async def clear_audit_logs(db: AsyncSession = Depends(get_db)):
     await db.execute(delete(AuditLog))
     await db.commit()
     return {"message": "Audit logs cleared successfully"}
+
+
+def map_model_log(log: ModelLog) -> ModelLogResponse:
+    import json
+    
+    payload = None
+    if log.request_payload:
+        try:
+            payload = json.loads(log.request_payload)
+        except Exception:
+            payload = log.request_payload
+            
+    resp_body = None
+    if log.response_body:
+        try:
+            resp_body = json.loads(log.response_body)
+        except Exception:
+            resp_body = log.response_body
+            
+    return ModelLogResponse(
+        id=log.id,
+        task_name=log.task_name,
+        task_id=log.task_id,
+        username=log.username,
+        user_id=log.user_id,
+        model_id=log.model_id,
+        model_url=log.model_url,
+        status_code=log.status_code,
+        started_at=log.started_at,
+        ended_at=log.ended_at,
+        input_tokens=log.input_tokens or 0,
+        output_tokens=log.output_tokens or 0,
+        request_payload=payload,
+        response_body=resp_body
+    )
+
+
+@app.get("/api/model-logs", response_model=Dict[str, Any])
+async def get_model_logs(
+    search: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import func
+    
+    query = select(ModelLog)
+    
+    if search:
+        query = query.where(
+            (ModelLog.task_name.like(f"%{search}%")) |
+            (ModelLog.task_id.like(f"%{search}%")) |
+            (ModelLog.model_id.like(f"%{search}%")) |
+            (ModelLog.username.like(f"%{search}%")) |
+            (ModelLog.model_url.like(f"%{search}%"))
+        )
+        
+    count_query = select(func.count()).select_from(query.subquery())
+    total_res = await db.execute(count_query)
+    total = total_res.scalar() or 0
+    
+    query = query.order_by(ModelLog.id.desc()).limit(limit).offset(skip)
+    logs_res = await db.execute(query)
+    logs = logs_res.scalars().all()
+    
+    return {
+        "total": total,
+        "logs": [map_model_log(log) for log in logs]
+    }
+
+
+@app.get("/api/tts")
+async def get_mock_tts(text: str, voice_id: Optional[str] = None):
+    import io
+    import math
+    import wave
+    import struct
+    from fastapi.responses import Response
+    
+    sample_rate = 8000
+    duration = 2.0  # 2 seconds
+    frequency = 350.0  # 350 Hz pleasant tone
+    
+    wav_io = io.BytesIO()
+    with wave.open(wav_io, 'wb') as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(sample_rate)
+        
+        num_samples = int(sample_rate * duration)
+        for i in range(num_samples):
+            t = i / sample_rate
+            envelope = math.exp(-2.5 * t)  # decay factor
+            value = int(24000.0 * envelope * math.sin(2.0 * math.pi * frequency * t))
+            data = struct.pack('<h', value)
+            wav_file.writeframesraw(data)
+            
+    wav_io.seek(0)
+    audio_bytes = wav_io.read()
+    
+    return Response(content=audio_bytes, media_type="audio/wav")
 
 
 # ==========================================
@@ -1091,5 +1459,367 @@ async def delete_user(user_id: int, db: AsyncSession = Depends(get_db)):
     return {"success": True, "message": f"管理员 {user.username} 已注销"}
 
 
+# ==========================================
+# 11. Focus Watchlist (重点筛选池) APIs
+# ==========================================
+@app.get("/api/focus-watchlist", response_model=List[FocusStockResponse])
+async def get_focus_watchlist(db: AsyncSession = Depends(get_db)):
+    """
+    获取重点筛选池中的所有个股
+    """
+    res = await db.execute(select(FocusStock).order_by(FocusStock.id.desc()))
+    return res.scalars().all()
+
+
+@app.post("/api/focus-watchlist", response_model=FocusStockResponse)
+async def add_to_focus_watchlist(stock_data: FocusStockCreate, db: AsyncSession = Depends(get_db)):
+    """
+    添加个股到重点筛选池，自动排重并写入非阻塞调用审计
+    """
+    res = await db.execute(select(FocusStock).where(FocusStock.symbol == stock_data.symbol))
+    existing = res.scalars().first()
+    if existing:
+        raise HTTPException(status_code=400, detail="该股票已存在于重点筛选池中。")
+    
+    db_stock = FocusStock(
+        symbol=stock_data.symbol,
+        name=stock_data.name,
+        sector=stock_data.sector,
+        added_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        rating=stock_data.rating or "⭐ 中线关注",
+        custom_tags=stock_data.custom_tags or "",
+        investment_logic=stock_data.investment_logic or "",
+        target_price=stock_data.target_price,
+        stop_loss=stock_data.stop_loss,
+        notes=stock_data.notes or ""
+    )
+    db.add(db_stock)
+    await db.commit()
+    await db.refresh(db_stock)
+    
+    # Non-blocking async audit log trigger
+    from .utils.audit import record_audit_log_sync
+    record_audit_log_sync(
+        service_name="策略引擎",
+        interface_name="添加重点池个股",
+        request_url="/api/focus-watchlist",
+        request_params=stock_data.dict(),
+        response_status="SUCCESS",
+        response_summary=f"添加 {db_stock.name} ({db_stock.symbol}) 至个人重点池",
+        duration_ms=4
+    )
+    
+    return db_stock
+
+
+@app.put("/api/focus-watchlist/{symbol}", response_model=FocusStockResponse)
+async def update_focus_stock(symbol: str, update_data: FocusStockUpdate, db: AsyncSession = Depends(get_db)):
+    """
+    对重点池中的个股进行结构化更新并记录审计
+    """
+    res = await db.execute(select(FocusStock).where(FocusStock.symbol == symbol))
+    db_stock = res.scalars().first()
+    if not db_stock:
+        raise HTTPException(status_code=404, detail="重点筛选池中未找到该股票。")
+    
+    for key, value in update_data.dict(exclude_unset=True).items():
+        setattr(db_stock, key, value)
+    
+    await db.commit()
+    await db.refresh(db_stock)
+    
+    # Non-blocking async audit log trigger
+    from .utils.audit import record_audit_log_sync
+    record_audit_log_sync(
+        service_name="策略引擎",
+        interface_name="更新重点池个股",
+        request_url=f"/api/focus-watchlist/{symbol}",
+        request_params=update_data.dict(exclude_unset=True),
+        response_status="SUCCESS",
+        response_summary=f"更新重点池 {db_stock.name} ({db_stock.symbol}) 的配置结构",
+        duration_ms=3
+    )
+    
+    return db_stock
+
+
+@app.delete("/api/focus-watchlist/{symbol}")
+async def delete_from_focus_watchlist(symbol: str, db: AsyncSession = Depends(get_db)):
+    """
+    从重点池中移出个股并记录审计
+    """
+    res = await db.execute(select(FocusStock).where(FocusStock.symbol == symbol))
+    db_stock = res.scalars().first()
+    if not db_stock:
+        raise HTTPException(status_code=404, detail="重点筛选池中未找到该股票。")
+    
+    await db.delete(db_stock)
+    await db.commit()
+    
+    # Non-blocking async audit log trigger
+    from .utils.audit import record_audit_log_sync
+    record_audit_log_sync(
+        service_name="策略引擎",
+        interface_name="移出重点池个股",
+        request_url=f"/api/focus-watchlist/{symbol}",
+        request_params={"symbol": symbol},
+        response_status="SUCCESS",
+        response_summary=f"移出重点池个股 {db_stock.name} ({db_stock.symbol})",
+        duration_ms=2
+    )
+    
+    return {"success": True, "message": f"成功从重点筛选池中移出个股 {db_stock.name} ({db_stock.symbol})"}
+
+
+# ==========================================
+# 10. AI 投研产业链驾驶舱 (Cockpit) APIs
+# ==========================================
+
+@app.get("/api/cockpit/sectors", response_model=List[ResearchSectorResponse])
+async def get_cockpit_sectors(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ResearchSector))
+    return res.scalars().all()
+
+@app.post("/api/cockpit/sectors", response_model=ResearchSectorResponse)
+async def create_cockpit_sector(sector: ResearchSectorCreate, db: AsyncSession = Depends(get_db)):
+    db_sector = ResearchSector(**sector.dict())
+    db.add(db_sector)
+    await db.commit()
+    await db.refresh(db_sector)
+    return db_sector
+
+@app.get("/api/cockpit/sectors/{sector_id}/nodes", response_model=List[IndustryChainNodeResponse])
+async def get_cockpit_nodes(sector_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(IndustryChainNode).where(IndustryChainNode.sector_id == sector_id))
+    return res.scalars().all()
+
+@app.get("/api/cockpit/sectors/{sector_id}/costs", response_model=List[CostStructureResponse])
+async def get_cockpit_costs(sector_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(CostStructure).where(CostStructure.sector_id == sector_id))
+    return res.scalars().all()
+
+@app.get("/api/cockpit/sectors/{sector_id}/conclusions", response_model=List[ResearchConclusionResponse])
+async def get_cockpit_conclusions(sector_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ResearchConclusion).where(ResearchConclusion.sector_id == sector_id))
+    return res.scalars().all()
+
+@app.get("/api/cockpit/sectors/{sector_id}/reports", response_model=List[ResearchReportResponse])
+async def get_cockpit_reports(sector_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ResearchReport).where(ResearchReport.sector_id == sector_id))
+    return res.scalars().all()
+
+@app.get("/api/cockpit/conclusions/{conclusion_id}/evidences", response_model=List[EvidenceResponse])
+async def get_cockpit_evidences(conclusion_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(Evidence).where(Evidence.conclusion_id == conclusion_id))
+    return res.scalars().all()
+
+
+def map_model_config(cfg: ModelConfig) -> ModelConfigResponse:
+    caps = []
+    if cfg.capabilities:
+        caps = [c.strip() for c in cfg.capabilities.split(",") if c.strip()]
+    return ModelConfigResponse(
+        id=cfg.id,
+        name=cfg.name,
+        identifier=cfg.identifier,
+        provider=cfg.provider,
+        description=cfg.description,
+        api_key=cfg.api_key,
+        base_url=cfg.base_url,
+        is_default=cfg.is_default,
+        capabilities=caps,
+        status=cfg.status or "unknown",
+        error_message=cfg.error_message,
+        latency_ms=cfg.latency_ms or 0,
+        tested_at=cfg.tested_at,
+        sort_order=cfg.sort_order or 0
+    )
+
+
+@app.get("/api/models", response_model=List[ModelConfigResponse])
+async def list_models(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ModelConfig).order_by(ModelConfig.sort_order.asc(), ModelConfig.id.asc()))
+    models = res.scalars().all()
+    return [map_model_config(m) for m in models]
+
+
+@app.post("/api/models", response_model=ModelConfigResponse)
+async def create_model(model_data: ModelConfigCreate, db: AsyncSession = Depends(get_db)):
+    caps_str = ",".join(model_data.capabilities) if model_data.capabilities else ""
+    
+    # If is_default is "true", reset all other models to "false"
+    if model_data.is_default == "true":
+        from sqlalchemy import update
+        await db.execute(
+            update(ModelConfig)
+            .values(is_default="false")
+        )
+    
+    db_model = ModelConfig(
+        name=model_data.name,
+        identifier=model_data.identifier,
+        provider=model_data.provider,
+        description=model_data.description,
+        api_key=model_data.api_key,
+        base_url=model_data.base_url,
+        is_default=model_data.is_default or "false",
+        capabilities=caps_str,
+        sort_order=model_data.sort_order or 0,
+        status="unknown",
+        latency_ms=0
+    )
+    db.add(db_model)
+    await db.commit()
+    await db.refresh(db_model)
+    return map_model_config(db_model)
+
+
+@app.put("/api/models/{model_id}", response_model=ModelConfigResponse)
+async def update_model(model_id: int, model_data: ModelConfigUpdate, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id))
+    db_model = res.scalars().first()
+    if not db_model:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    
+    data_dict = model_data.dict(exclude_unset=True)
+    
+    # If is_default is changing to "true", reset all other models to "false"
+    if data_dict.get("is_default") == "true":
+        from sqlalchemy import update
+        await db.execute(
+            update(ModelConfig)
+            .where(ModelConfig.id != model_id)
+            .values(is_default="false")
+        )
+        
+    if "capabilities" in data_dict:
+        caps = data_dict.pop("capabilities")
+        db_model.capabilities = ",".join(caps) if caps else ""
+        
+    for k, v in data_dict.items():
+        setattr(db_model, k, v)
+        
+    await db.commit()
+    await db.refresh(db_model)
+    return map_model_config(db_model)
+
+
+@app.delete("/api/models/{model_id}")
+async def delete_model(model_id: int, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(ModelConfig).where(ModelConfig.id == model_id))
+    db_model = res.scalars().first()
+    if not db_model:
+        raise HTTPException(status_code=404, detail="Model config not found")
+    await db.delete(db_model)
+    await db.commit()
+    return {"success": True, "message": "Model config deleted successfully"}
+
+
+class UnsavedTestRequest(BaseModel):
+    id: Optional[int] = None
+    name: Optional[str] = None
+    identifier: Optional[str] = None
+    provider: Optional[str] = None
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+
+
+@app.post("/api/models/test")
+async def test_model_connection(req: UnsavedTestRequest, db: AsyncSession = Depends(get_db)):
+    import random
+    from datetime import datetime
+    
+    # Simulating connection test
+    model_name = ""
+    api_key = ""
+    base_url = ""
+    db_model = None
+    
+    if req.id is not None:
+        res = await db.execute(select(ModelConfig).where(ModelConfig.id == req.id))
+        db_model = res.scalars().first()
+        if not db_model:
+            raise HTTPException(status_code=404, detail="Model config not found")
+        model_name = db_model.name
+        api_key = db_model.api_key or ""
+        base_url = db_model.base_url or ""
+    else:
+        model_name = req.name or ""
+        api_key = req.api_key or ""
+        base_url = req.base_url or ""
+        
+    # Simulate validation rules
+    if req.id is None and (not req.identifier or not req.provider):
+        return {
+            "status": "failed",
+            "error_message": "Missing required fields: provider or identifier",
+            "latency_ms": 0,
+            "tested_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+    success = True
+    error_msg = None
+    latency = random.randint(45, 185)
+    
+    if api_key == "fail" or (base_url and "invalid" in base_url):
+        success = False
+        error_msg = "Connection timed out or API key is invalid"
+        latency = 0
+        
+    tested_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    status_str = "success" if success else "failed"
+    
+    if db_model:
+        db_model.status = status_str
+        db_model.error_message = error_msg
+        db_model.latency_ms = latency
+        db_model.tested_at = tested_at_str
+        await db.commit()
+        
+    # Record to ModelLog for verification/audit
+    import json
+    from datetime import timedelta
+    started_at_str = (datetime.now() - timedelta(milliseconds=latency)).strftime("%Y-%m-%d %H:%M:%S")
+    ended_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    test_log = ModelLog(
+        task_name="模型连接测试",
+        task_id=f"TEST_{int(datetime.now().timestamp())}",
+        username="admin",
+        user_id="1",
+        model_id=db_model.identifier if db_model else (req.identifier or "unknown"),
+        model_url=base_url or "https://api.openai.com/v1",
+        status_code="200" if success else "500",
+        started_at=started_at_str,
+        ended_at=ended_at_str,
+        input_tokens=random.randint(10, 20),
+        output_tokens=random.randint(20, 50) if success else 0,
+        request_payload=json.dumps({
+            "id": req.id,
+            "name": model_name,
+            "identifier": req.identifier or (db_model.identifier if db_model else None),
+            "provider": req.provider or (db_model.provider if db_model else None),
+            "base_url": base_url
+        }, ensure_ascii=False),
+        response_body=json.dumps({
+            "status": status_str,
+            "error_message": error_msg,
+            "latency_ms": latency,
+            "tested_at": tested_at_str
+        }, ensure_ascii=False)
+    )
+    db.add(test_log)
+    await db.commit()
+        
+    return {
+        "status": status_str,
+        "error_message": error_msg,
+        "latency_ms": latency,
+        "tested_at": tested_at_str
+    }
+
+
 if __name__ == "__main__":
     uvicorn.run("backend.app.main:app", host="127.0.0.1", port=8000, reload=True)
+
+

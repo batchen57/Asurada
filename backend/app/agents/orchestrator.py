@@ -36,6 +36,19 @@ class OrchestratorAgent:
         stock_res = await db.execute(select(Stock).where(Stock.is_active == True))
         stocks = stock_res.scalars().all()
         
+        # Load Strategy Center dynamic configurations
+        vcp_ma_short_str = await cls.get_configuration(db, "vcp_ma_short") or "50"
+        vcp_ma_long_str = await cls.get_configuration(db, "vcp_ma_long") or "200"
+        vcp_volume_factor_str = await cls.get_configuration(db, "vcp_volume_factor") or "1.5"
+        brooks_lookback_window_str = await cls.get_configuration(db, "brooks_lookback_window") or "5"
+        brooks_stop_atr_str = await cls.get_configuration(db, "brooks_stop_atr") or "1.5"
+        
+        vcp_ma_short = int(vcp_ma_short_str) if vcp_ma_short_str.isdigit() else 50
+        vcp_ma_long = int(vcp_ma_long_str) if vcp_ma_long_str.isdigit() else 200
+        vcp_volume_factor = float(vcp_volume_factor_str) if vcp_volume_factor_str else 1.5
+        brooks_lookback = int(brooks_lookback_window_str) if brooks_lookback_window_str.isdigit() else 5
+        brooks_stop_atr = float(brooks_stop_atr_str) if brooks_stop_atr_str else 1.5
+        
         one_pager_lines = [
             "## 📋 盘前可执行一页纸 (Actionable One-Pager)",
             f"**生成日期**：{datetime.now().strftime('%Y-%m-%d %H:%M')}",
@@ -75,12 +88,22 @@ class OrchestratorAgent:
                 continue
                 
             # Run VCPAgent
-            vcp_res = VCPAgent.analyze_vcp(prices_history)
+            vcp_res = VCPAgent.analyze_vcp(
+                prices_history,
+                ma_short=vcp_ma_short,
+                ma_long=vcp_ma_long,
+                volume_factor=vcp_volume_factor
+            )
             
             # Run BrooksAgent
             # Moutai & Vanke have horizontal support/resistance levels
             support = 1600.0 if stock.symbol == "600519.SH" else (280.0 if stock.symbol == "300760.SZ" else None)
-            brooks_res = BrooksAgent.analyze_price_action(prices_history, support_price=support)
+            brooks_res = BrooksAgent.analyze_price_action(
+                prices_history,
+                support_price=support,
+                lookback_window=brooks_lookback,
+                stop_atr=brooks_stop_atr
+            )
             
             stock_summary = f"**[{stock.name} ({stock.symbol})]** ({stock.sector})\n"
             

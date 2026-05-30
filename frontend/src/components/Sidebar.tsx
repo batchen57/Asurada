@@ -15,7 +15,10 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
-  LogOut
+  LogOut,
+  Star,
+  Network,
+  Cpu
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -28,6 +31,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, currentUser, onLogout }) => {
   const menuItems = [
     { id: 'workbench', label: '工作台', subLabel: 'Workbench', icon: LayoutDashboard },
+    { id: 'cockpit_list', label: '产业链驾驶舱', subLabel: 'Cockpit', icon: Network },
     {
       id: 'discovery_group',
       label: '选股与题材',
@@ -35,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
       icon: TrendingUp,
       children: [
         { id: 'today_market', label: '今日股市', subLabel: 'Market Today', icon: Landmark },
+        { id: 'focus_watchlist', label: '重点筛选池', subLabel: 'Focus Watchlist', icon: Star },
         { id: 'discovery', label: '智能选股', subLabel: 'Discovery 01', icon: TrendingUp },
       ]
     },
@@ -68,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
       icon: ClipboardList,
       children: [
         { id: 'audit_logs', label: '接口审计管理', subLabel: 'Audit Logs', icon: ClipboardList },
+        { id: 'model_logs', label: '模型调用记录', subLabel: 'Model Logs', icon: Cpu },
         { id: 'user_manage', label: '管理员用户管理', subLabel: 'User Management', icon: User },
       ]
     },
@@ -78,6 +84,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, curre
       icon: Settings,
       children: [
         { id: 'sector_config', label: '板块配置', subLabel: 'Sector Config', icon: Sliders },
+        { id: 'model_config', label: '模型配置', subLabel: 'Model Config', icon: Cpu },
         { id: 'settings', label: '系统设置', subLabel: 'Settings', icon: Settings },
       ]
     },

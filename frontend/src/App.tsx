@@ -9,6 +9,8 @@ import { Observe } from './pages/Observe';
 import { Review } from './pages/Review';
 import { Discovery } from './pages/Discovery';
 import { TodayMarket } from './pages/TodayMarket';
+import { FocusWatchlist } from './pages/FocusWatchlist';
+import { StockDetail } from './pages/StockDetail';
 import { DataHubCenter } from './pages/DataHubCenter';
 import { StrategyCenter } from './pages/StrategyCenter';
 import { AgentCenter } from './pages/AgentCenter';
@@ -16,6 +18,10 @@ import { Signals } from './pages/Signals';
 import { SettingsPage } from './pages/Settings';
 import { AuditLogs } from './pages/AuditLogs';
 import { SectorConfig } from './pages/SectorConfig';
+import { CockpitList } from './pages/CockpitList';
+import { CockpitDashboard } from './pages/CockpitDashboard';
+import { ModelConfig } from './components/ModelConfig';
+
 
 import { WorkbenchData, Configuration } from './types';
 import { Bot, X, Sparkles, Send } from 'lucide-react';
@@ -26,8 +32,13 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!localStorage.getItem('asurada_token'));
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('asurada_token'));
   const [currentUser, setCurrentUser] = useState<any>(() => {
-    const saved = localStorage.getItem('asurada_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = localStorage.getItem('asurada_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.warn('Failed to parse asurada_user from localStorage:', e);
+      return null;
+    }
   });
 
   const [loginUsername, setLoginUsername] = useState<string>('');
@@ -85,6 +96,18 @@ function App() {
   };
 
   const [activeTab, setActiveTab] = useState<string>('workbench');
+  const [selectedStock, setSelectedStock] = useState<{ symbol: string; name: string; sector?: string } | null>(null);
+  const [selectedCockpitSector, setSelectedCockpitSector] = useState<{ id: number; name: string } | null>(null);
+
+  const handleNavigate = (tab: string, params?: any) => {
+    if (tab === 'stock_detail' && params) {
+      setSelectedStock(params);
+    }
+    if (tab === 'cockpit_dashboard' && params) {
+      setSelectedCockpitSector(params);
+    }
+    setActiveTab(tab);
+  };
   const [data, setData] = useState<WorkbenchData | null>(null);
   const [configs, setConfigs] = useState<Configuration[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -239,7 +262,7 @@ function App() {
           <Workbench 
             data={data} 
             onRefresh={handleRefresh} 
-            onNavigate={setActiveTab}
+            onNavigate={handleNavigate}
             onToggleTask={handleToggleTask}
             isLoading={isLoading}
           />
@@ -271,17 +294,28 @@ function App() {
       case 'discovery':
         return <Discovery />;
       case 'today_market':
-        return <TodayMarket onNavigate={setActiveTab} />;
+        return <TodayMarket onNavigate={handleNavigate} />;
+      case 'focus_watchlist':
+        return <FocusWatchlist onNavigate={handleNavigate} />;
+      case 'stock_detail':
+        return <StockDetail stock={selectedStock} onNavigate={handleNavigate} />;
       case 'datahub':
         return <DataHubCenter />;
       case 'strategy':
-        return <StrategyCenter />;
+        return (
+          <StrategyCenter 
+            configs={configs} 
+            onUpdateConfig={handleUpdateConfig} 
+          />
+        );
       case 'agents':
         return <AgentCenter />;
       case 'signals':
         return <Signals signals={data?.signals || []} />;
       case 'audit_logs':
         return <AuditLogs defaultTab="logs" />;
+      case 'model_logs':
+        return <AuditLogs defaultTab="model_logs" />;
       case 'user_manage':
         return <AuditLogs defaultTab="users" />;
       case 'settings':
@@ -294,46 +328,69 @@ function App() {
         );
       case 'sector_config':
         return <SectorConfig />;
+      case 'model_config':
+        return <ModelConfig />;
+      case 'cockpit_list':
+        return <CockpitList onNavigate={handleNavigate} />;
+      case 'cockpit_dashboard':
+        return <CockpitDashboard sector={selectedCockpitSector} onNavigate={handleNavigate} />;
       default:
         return <div style={{ padding: '40px', color: '#64748b' }}>模块正在规划开发中...</div>;
     }
   };
 
   // Fallback mock data if server not online
-  const getMockDataFallback = (): WorkbenchData => ({
-    overview: {
-      indices: [
-        { name: '上证指数', code: '000001.SH', price: 3134.25, change_pct: -0.42 },
-        { name: '深证成指', code: '399001.SZ', price: 10194.36, change_pct: -0.71 },
-        { name: '创业板指', code: '399006.SZ', price: 2057.58, change_pct: -1.12 }
+  const getMockDataFallback = (): WorkbenchData => {
+    const now = new Date();
+    const timeStr = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    const baseSse = data?.overview?.indices?.[0]?.price || 4068.57;
+    const baseSzse = data?.overview?.indices?.[1]?.price || 15575.13;
+    const baseGem = data?.overview?.indices?.[2]?.price || 4037.95;
+    const baseTurnover = data?.overview?.turnover_billion || 33190.32;
+
+    const noise = (Math.random() - 0.5) * 0.001; // max 0.05% fluctuation
+    
+    const ssePrice = baseSse * (1 + noise);
+    const szsePrice = baseSzse * (1 + noise * 1.2);
+    const gemPrice = baseGem * (1 + noise * 1.5);
+    const turnover = baseTurnover * (1 + (Math.random() - 0.5) * 0.01);
+
+    return {
+      overview: {
+        indices: [
+          { name: '上证指数', code: '000001.SH', price: Number(ssePrice.toFixed(2)), change_pct: -0.73 + Number((noise * 100).toFixed(2)) },
+          { name: '深证成指', code: '399001.SZ', price: Number(szsePrice.toFixed(2)), change_pct: -1.81 + Number((noise * 120).toFixed(2)) },
+          { name: '创业板指', code: '399006.SZ', price: Number(gemPrice.toFixed(2)), change_pct: -2.11 + Number((noise * 150).toFixed(2)) }
+        ],
+        turnover_billion: Number(turnover.toFixed(1)),
+        turnover_change_pct: 6.32,
+        data_cutoff: timeStr
+      },
+      positions: data?.positions || [
+        { id: 1, symbol: '600519.SH', name: '贵州茅台', volume: 100, available_volume: 100, cost_price: 1620.00, current_price: 1688.50 },
+        { id: 2, symbol: '300750.SZ', name: '宁德时代', volume: 200, available_volume: 200, cost_price: 185.00, current_price: 195.80 },
+        { id: 3, symbol: '300760.SZ', name: '迈瑞医疗', volume: 100, available_volume: 100, cost_price: 275.00, current_price: 286.66 }
       ],
-      turnover_billion: 8542.0,
-      turnover_change_pct: 6.32,
-      data_cutoff: '05-20 15:00'
-    },
-    positions: [
-      { id: 1, symbol: '600519.SH', name: '贵州茅台', volume: 100, available_volume: 100, cost_price: 1620.00, current_price: 1688.50 },
-      { id: 2, symbol: '300750.SZ', name: '宁德时代', volume: 200, available_volume: 200, cost_price: 185.00, current_price: 195.80 },
-      { id: 3, symbol: '300760.SZ', name: '迈瑞医疗', volume: 100, available_volume: 100, cost_price: 275.00, current_price: 286.66 }
-    ],
-    tasks: [
-      { id: 1, phase: 'Plan', task_name: '盘前计划：生成今日计划清单', status: '去完成' },
-      { id: 2, phase: 'Observe', task_name: '盘中盯盘：低频巡检与阈值监控', status: '进行中' },
-      { id: 3, phase: 'Review', task_name: '盘后复盘：生成复盘报告', status: '待开始' },
-      { id: 4, phase: 'Iterate', task_name: '候选池：更新与初筛', status: '去执行' }
-    ],
-    signals: [
-      { id: 1, timestamp: '05-20 10:32', symbol: '300750.SZ', name: '宁德时代', direction: '买入', strategy_type: 'VCP', trigger_reason: '突破前高，量能放大', status: '已触发' },
-      { id: 2, timestamp: '05-20 09:55', symbol: '300760.SZ', name: '迈瑞医疗', direction: '关注', strategy_type: 'Brooks', trigger_reason: '价格接近支撑位', status: '观察中' },
-      { id: 3, timestamp: '05-19 14:21', symbol: '000002.SZ', name: '万科A', direction: '卖出', strategy_type: 'Brooks', trigger_reason: '跌破关键均线', status: '已完成' }
-    ],
-    system_status: [
-      { id: 1, service_name: '数据服务', status: '正常', detail: '延迟 2.3s' },
-      { id: 2, service_name: '策略引擎', status: '正常', detail: '运行中' },
-      { id: 3, service_name: '智能体服务', status: '正常', detail: '3/3 在线' },
-      { id: 4, service_name: '信号与告警', status: '正常', detail: '未触发' }
-    ]
-  });
+      tasks: data?.tasks || [
+        { id: 1, phase: 'Plan', task_name: '盘前计划：生成今日计划清单', status: '去完成' },
+        { id: 2, phase: 'Observe', task_name: '盘中盯盘：低频巡检与阈值监控', status: '进行中' },
+        { id: 3, phase: 'Review', task_name: '盘后复盘：生成复盘报告', status: '待开始' },
+        { id: 4, phase: 'Iterate', task_name: '候选池：更新与初筛', status: '去执行' }
+      ],
+      signals: data?.signals || [
+        { id: 1, timestamp: '05-20 10:32', symbol: '300750.SZ', name: '宁德时代', direction: '买入', strategy_type: 'VCP', trigger_reason: '突破前高，量能放大', status: '已触发' },
+        { id: 2, timestamp: '05-20 09:55', symbol: '300760.SZ', name: '迈瑞医疗', direction: '关注', strategy_type: 'Brooks', trigger_reason: '价格接近支撑位', status: '观察中' },
+        { id: 3, timestamp: '05-19 14:21', symbol: '000002.SZ', name: '万科A', direction: '卖出', strategy_type: 'Brooks', trigger_reason: '跌破关键均线', status: '已完成' }
+      ],
+      system_status: data?.system_status || [
+        { id: 1, service_name: '数据服务', status: '正常', detail: '延迟 2.3s' },
+        { id: 2, service_name: '策略引擎', status: '正常', detail: '运行中' },
+        { id: 3, service_name: '智能体服务', status: '正常', detail: '3/3 在线' },
+        { id: 4, service_name: '信号与告警', status: '正常', detail: '未触发' }
+      ]
+    };
+  };
 
   if (!isAuthenticated) {
     return (

@@ -33,14 +33,14 @@ npm run lint      # ESLint
 frontend/src/
   App.tsx          — 路由/布局/状态管理/安全登录遮罩/AI 助手抽屉
   types.ts         — 所有前端类型定义（与 Pydantic schema 对应）
-  pages/           — Workbench, TodayMarket, Discovery, Plan, Observe, Review, DataHubCenter, StrategyCenter, AgentCenter, Signals, AuditLogs (含用户管理Tab), SectorConfig, Settings
-  components/      — Sidebar, Topbar, CardWorkflow, TodoList, RecentSignals, SystemStatus, TodayOverview, PlanStockCard
+  pages/           — Workbench, TodayMarket, FocusWatchlist, StockDetail, Discovery, Plan, Observe, Review, DataHubCenter, StrategyCenter, AgentCenter, Signals, AuditLogs (含用户管理/模型调用Tab), SectorConfig, CockpitList, CockpitDashboard, Settings
+  components/      — Sidebar, Topbar, CardWorkflow, TodoList, RecentSignals, SystemStatus, TodayOverview, PlanStockCard, ModelConfig, ModelLogs
 
 backend/app/
-  main.py          — FastAPI 应用入口 + 所有 API 路由（大盘实时报价、个股财务详情、鉴权及多用户CRUD、安全审计过滤）
+  main.py          — FastAPI 应用入口 + 所有 API 路由（大盘实时报价、个股财务详情、鉴权及多用户CRUD、重点池管理、产业链驾驶舱、模型配置管理、安全审计过滤）
   database.py      — 异步 SQLite 引擎 + get_db 依赖注入
-  models.py        — SQLAlchemy ORM: Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog, User
-  schemas.py       — Pydantic 请求/响应模型（新增 UserResponse, UserLoginResponse, TodayMarketResponse 等）
+  models.py        — SQLAlchemy ORM: Stock, DailyPrice, Position, Signal, Task, SystemStatus, Configuration, AuditLog, User, FocusStock, ResearchSector, ResearchReport, IndustryChainNode, CostStructure, ResearchConclusion, Evidence, ModelConfig, ModelLog
+  schemas.py       — Pydantic 请求/响应模型（含 FocusStock/Cockpit/ModelConfig/ModelLog 全系列数据契约）
   utils/
     audit.py       — 异步/同步底层审计组件（提供切面化接口数据拦截，含 Operator 追踪）
     auth.py        — 独立安全鉴权底座（PBKDF2-SHA256 密码哈希、HMAC-SHA256 JWT 自验证签发）
@@ -51,7 +51,7 @@ backend/app/
     vcp_agent.py    — VCP 波动率收缩形态识别（Mark Minervini 风格）
     brooks_agent.py — 裸 K 价格行为学分析（Al Brooks 风格，Pinbar/H1/H2）
   datahub/
-    loader.py       — 数据库建表 + 种子数据填充
+    loader.py       — 数据库建表 + 种子数据填充（含投研板块/节点/成本/研报/证据全量初始化）
     tushare_sim.py  — Tushare 日线历史数据仿真生成器（集成审计日志捕获）
     sina_sim.py     — 新浪财经实时行情仿真（集成审计日志捕获）
     market_today.py — 今日大盘与个股行情融合聚合器（整合实盘Sina API与本地仿真）
@@ -68,6 +68,9 @@ backend/app/
 5. **接口调用审计** → 行情仿真（Sina / Tushare）或消息推送（Feishu）触发 → 通过 `audit.py` 写入 `AuditLog` 并入库 → 前端 `AuditLogs.tsx` 查询与展示。
 6. **今日股市与个股穿透** → 前端加载 `/api/discovery/today-market` -> 调用 `market_today.py` 与 `market_details_data.py` -> 实盘与高保真本地仿真秒级拼装 -> 渲染个股基本面与 3 年预测详情抽屉。
 7. **身份验证与安全审计** → 登录 `/api/auth/login` -> 签发 JWT 令牌 -> 携带于后续 HTTP 请求头中 -> 后端自校验权限并审计 Operator 操作人属性。
+8. **重点筛选池管理** → 前端触发 `/api/focus-watchlist` CRUD → 后端 `FocusStock` 表读写 → 添加/更新/移出操作均切面审计入库 → `FocusWatchlist.tsx` 渲染管理面板。
+9. **产业链驾驶舱研究** → 前端加载 `/api/cockpit/sectors` → 选择板块后钻取 `/api/cockpit/sectors/{id}/nodes`、`/costs`、`/conclusions`、`/reports` → 证据溯源 `/api/cockpit/conclusions/{id}/evidences` → `CockpitDashboard.tsx` 五维画面渲染。
+10. **AI 模型配置与调用** → 前端 `/api/models` CRUD 管理模型注册 → `/api/models/test` 连接测试写入 `ModelLog` → `/api/model-logs` 分页检索调用审计 → `ModelConfig.tsx` 与 `ModelLogs.tsx` 双面板渲染。
 
 ### 关键设计点
 
@@ -78,6 +81,9 @@ backend/app/
 - **非阻塞切面审计机制**：审计功能基于异步/同步双通道实现。高频仿真环境下的调用记录通过事件循环的 `create_task` 派发或新开事件循环，实现物理数据库秒级落盘而不阻塞日内 Tick 报价产生。
 - **JWT与PBKDF2-SHA256密码安全**：弃用第三方复杂鉴权库，使用标准库自研 JWT 签名算法；密码存储使用标准 `hashlib` 的 10 万次迭代哈希防爆。
 - **板块与个股树轻量化 CRUD**：在 SectorConfig 模块上以“板块”为唯一聚合容器，股票配置参数高内聚，支持一键填充 Preset 演示数据及 SQLite 持久化。
+- **研报驱动的证据溯源**：产业链驾驶舱的每条 AI 结论必须追溯至：结论 → 研报 → 页码 → 原文片段 → 置信度评分。系统通过 `Evidence` 表物理关联 `ResearchConclusion` 与 `ResearchReport`，确保"结论来自研报，而非 AI 随机生成"。
+- **重点池审计切面**：FocusWatchlist 的增删改操作均通过 `record_audit_log_sync` 非阻塞写入审计日志，保障操作可追溯性。
+- **模型配置互斥默认**：设置默认模型时自动将其余模型的 `is_default` 重置为 "false"，连接测试结果实时回写 `ModelConfig` 并审计至 `ModelLog`。
 
 ---
 ## 编码行为准则

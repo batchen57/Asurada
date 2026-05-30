@@ -49,7 +49,21 @@ export const RecentSignals: React.FC<RecentSignalsProps> = ({ signals, onViewAll
     <div className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-        <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>最近信号</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <h3 style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>最近信号</h3>
+          <span style={{
+            fontSize: '10px',
+            fontWeight: '600',
+            color: '#f59e0b',
+            background: 'rgba(245, 158, 11, 0.08)',
+            padding: '2px 8px',
+            borderRadius: '6px',
+            border: '1px solid rgba(245, 158, 11, 0.15)',
+            letterSpacing: '0.5px'
+          }}>
+            仿真数据
+          </span>
+        </div>
         {onViewAll && (
           <button 
             onClick={onViewAll}
